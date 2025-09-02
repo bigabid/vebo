@@ -1,0 +1,49 @@
+---
+description: General description and guidelines for this project
+globs: **/*
+---
+
+## Description
+- Purpose – Develop a tool that automatically profiles tabular datasets to provide a clear picture of their structure and quality.
+- Approach – The profiler works generically, without assuming prior knowledge of the data’s meaning, focusing only on observable properties.
+- Scope – It captures insights at the column, cross-column, and table level, offering both granular and holistic perspectives.
+- Design – Built to be scalable, flexible, and easy to extend, so it can handle datasets of varying size and complexity.
+- Outcome – Deliver outputs that help users quickly understand, assess, and compare datasets, supporting better data exploration and decision-making.
+
+## Guidelines
+- Basic checks should be performed first in order to infer which deep checks are relevant
+- There should be an option to perform heavier checks on a sample of the data to lighten them
+
+## Python Code Generation System Requirements (Clarified)
+
+### Core Functionality
+- **Automatic Rule Processing**: Focus first on meta-rules that determine which other rules are relevant
+- **User Workflow**: Users input a dataframe and optional flags to enable/disable rule categories. The rule-running funnel is fully automatic.
+- **Technology Stack**: Use pandas as main library, numpy for numeric aggregations, plus other relevant libraries
+- **Integration**: Part of the main Vebo application (not standalone)
+- **Data Sources**: CSV format for initial implementation
+- **Performance**: Few seconds for smaller dataframes, few minutes for large ones
+- **Deployment**: Local "small" machines with basic parallelization
+
+### Technical Requirements
+- Generated code should follow Python best practices (PEP 8, type hints, proper error handling)
+- High-level enable/disable flags for rule categories. All other decisions inferred from data
+- High level of error detail, but errors should skip specific checks/groups rather than stop entire run
+- Support for both basic and advanced profiling checks with configurable parameters
+- Performance optimization for large datasets through sampling and parallel processing
+
+### Final Implementation Specifications (Clarified)
+1. **Rule Selection Logic**: Meta-rules use data types, data patterns, size thresholds, and other relevant criteria (excluding column names)
+2. **Rule Categories**: Focus on "deepness level" - users can disable cross-column checks for faster, more concise reports
+3. **Output Format**: JSON schema with support for images and visualizations (see PRD Section 9.3)
+4. **Rule Dependencies**: Decision tree/graph approach for handling rule dependencies (see PRD Section 9.4)
+5. **Sampling Strategy**: Random sampling with constant seed for reproducibility
+6. **Parallelization**: Both rule-level and category-level parallelization
+
+### Key Implementation Notes
+- Use pandas as main library, numpy for numeric aggregations
+- Random sampling with constant seed (e.g., seed=42) for reproducibility
+- Error handling: skip specific checks/groups rather than stopping entire run
+- Support for both basic and deep analysis modes
+- Integration with existing Vebo web interface
+- Local deployment on small machines with basic parallelization
