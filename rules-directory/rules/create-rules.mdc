@@ -1,0 +1,64 @@
+---
+description: This rule explains how to create new .mdc project rule files for the Cursor agent.
+alwaysApply: false
+---
+# Rule Title
+
+Main content explaining the rule with markdown formatting.
+
+1. Step-by-step instructions
+2. Code examples
+3. Guidelines
+
+Example:
+```typescript
+// Good example
+function goodExample() {
+  // Implementation following guidelines
+}
+
+// Bad example
+function badExample() {
+  // Implementation not following guidelines
+}
+```
+
+## Nested rules
+
+Organize rules by placing `.cursor/rules` directories throughout your project. Nested rules automatically attach when files inside their directory are referenced.
+
+Directory layout example:
+```text
+project/
+  .cursor/rules/        # Project-wide rules
+  backend/
+    server/
+      .cursor/rules/    # Backend-specific rules
+  frontend/
+    .cursor/rules/      # Frontend-specific rules
+```
+
+How to create a nested rule:
+1. Create a `.cursor/rules/` directory inside the target subdirectory (e.g., `backend/server/.cursor/rules`).
+2. Add one or more `.mdc` files with clear descriptions and the appropriate rule type.
+3. Prefer `Auto Attached` or `Agent Requested` types for scoped behavior; avoid `Always` unless truly global.
+4. Optionally set `globs` to further narrow applicability within that subtree.
+5. Keep rules focused and composable; split large guidance into smaller rules.
+
+Minimal template for a nested rule:
+```mdc
+---
+description: Backend service standards
+globs:
+  - "backend/server/**"
+alwaysApply: false
+---
+
+- Use our internal RPC pattern for services
+- Validate all inputs with zod
+```
+
+Notes:
+- When multiple nested rules apply, Cursor will combine them in context.
+- Test activation by referencing files in the subdirectory and checking active rules.
+- For background reading, see [Nested rules](https://docs.cursor.com/en/context/rules#nested-rules).
