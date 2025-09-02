@@ -1,19 +1,49 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Cloud, Database, TrendingUp } from 'lucide-react';
+import { Cloud } from 'lucide-react';
 import { Toaster } from '@/components/ui/toaster';
 import { TableSelector } from '@/components/TableSelector';
 import { PartitionSelector } from '@/components/PartitionSelector';
 import { ExecuteButton } from '@/components/ExecuteButton';
 import { InsightsPanel } from '@/components/InsightsPanel';
 import type { InsightsData } from '@/lib/api';
+import { DataSourceSelector } from '@/components/DataSourceSelector';
+import { CatalogSelector } from '@/components/CatalogSelector';
+import { DatabaseSelector } from '@/components/DatabaseSelector';
 
 const queryClient = new QueryClient();
 
 function AthenaExplorer() {
+  const [selectedDataSource, setSelectedDataSource] = useState<string | null>(null);
+  const [selectedCatalog, setSelectedCatalog] = useState<string | null>(null);
+  const [selectedDatabase, setSelectedDatabase] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [selectedPartitions, setSelectedPartitions] = useState<Record<string, string[]>>({});
   const [currentInsights, setCurrentInsights] = useState<InsightsData | null>(null);
+
+  const handleDataSourceSelect = (ds: string) => {
+    setSelectedDataSource(ds);
+    setSelectedCatalog(null);
+    setSelectedDatabase(null);
+    setSelectedTable(null);
+    setSelectedPartitions({});
+    setCurrentInsights(null);
+  };
+
+  const handleCatalogSelect = (catalog: string) => {
+    setSelectedCatalog(catalog);
+    setSelectedDatabase(null);
+    setSelectedTable(null);
+    setSelectedPartitions({});
+    setCurrentInsights(null);
+  };
+
+  const handleDatabaseSelect = (db: string) => {
+    setSelectedDatabase(db);
+    setSelectedTable(null);
+    setSelectedPartitions({});
+    setCurrentInsights(null);
+  };
 
   const handleTableSelect = (table: string) => {
     setSelectedTable(table);
@@ -47,18 +77,44 @@ function AthenaExplorer() {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Left Panel - Controls */}
           <div className="xl:col-span-1 space-y-6">
+            <DataSourceSelector
+              selectedDataSource={selectedDataSource}
+              onChange={handleDataSourceSelect}
+            />
+
+            <CatalogSelector
+              dataSource={selectedDataSource}
+              selectedCatalog={selectedCatalog}
+              onChange={handleCatalogSelect}
+            />
+
+            <DatabaseSelector
+              dataSource={selectedDataSource}
+              catalog={selectedCatalog}
+              selectedDatabase={selectedDatabase}
+              onChange={handleDatabaseSelect}
+            />
+
             <TableSelector
+              dataSource={selectedDataSource}
+              catalog={selectedCatalog}
+              database={selectedDatabase}
               selectedTable={selectedTable}
               onTableSelect={handleTableSelect}
             />
             
             <PartitionSelector
+              catalog={selectedCatalog}
+              database={selectedDatabase}
               selectedTable={selectedTable}
               selectedPartitions={selectedPartitions}
               onPartitionChange={setSelectedPartitions}
             />
             
             <ExecuteButton
+              dataSource={selectedDataSource}
+              catalog={selectedCatalog}
+              database={selectedDatabase}
               selectedTable={selectedTable}
               selectedPartitions={selectedPartitions}
               onInsightsReady={handleInsightsReady}

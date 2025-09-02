@@ -1,20 +1,47 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchTables, fetchPartitions, startInsightsJob, getJobStatus, type InsightsJob } from '@/lib/api';
+import { fetchDataSources, fetchCatalogs, fetchDatabases, fetchTables, fetchPartitions, startInsightsJob, getJobStatus } from '@/lib/api';
 import { useEffect } from 'react';
 
-export const useTables = () => {
+export const useDataSources = () => {
   return useQuery({
-    queryKey: ['tables'],
-    queryFn: fetchTables,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    queryKey: ['athena', 'data-sources'],
+    queryFn: fetchDataSources,
+    staleTime: 5 * 60 * 1000,
   });
 };
 
-export const usePartitions = (table: string | null) => {
+export const useCatalogs = (dataSource: string | null) => {
   return useQuery({
-    queryKey: ['partitions', table],
-    queryFn: () => fetchPartitions(table!),
-    enabled: !!table,
+    queryKey: ['athena', 'catalogs', dataSource],
+    queryFn: () => fetchCatalogs(dataSource!),
+    enabled: !!dataSource,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+export const useDatabases = (dataSource: string | null, catalog: string | null) => {
+  return useQuery({
+    queryKey: ['athena', 'databases', dataSource, catalog],
+    queryFn: () => fetchDatabases(dataSource!, catalog!),
+    enabled: !!dataSource && !!catalog,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+export const useTables = (dataSource: string | null, catalog: string | null, database: string | null) => {
+  return useQuery({
+    queryKey: ['athena', 'tables', dataSource, catalog, database],
+    queryFn: () => fetchTables(dataSource!, catalog!, database!),
+    enabled: !!dataSource && !!catalog && !!database,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+export const usePartitions = (table: string | null, params?: { catalog?: string; database?: string }) => {
+  return useQuery({
+    queryKey: ['partitions', params?.catalog, params?.database, table],
+    queryFn: () => fetchPartitions(table!, { catalog: params?.catalog, database: params?.database }),
+    enabled: !!table && !!params?.catalog && !!params?.database,
     staleTime: 5 * 60 * 1000,
   });
 };
@@ -23,8 +50,8 @@ export const useStartInsights = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ table, partitions }: { table: string; partitions: Record<string, string[]> }) =>
-      startInsightsJob(table, partitions),
+    mutationFn: (params: { dataSource: string; catalog: string; database: string; table: string; partitions: Record<string, string[]> }) =>
+      startInsightsJob(params),
     onSuccess: () => {
       // Invalidate job status queries to trigger polling
       queryClient.invalidateQueries({ queryKey: ['job-status'] });
