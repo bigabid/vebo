@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Athena Insight Explorer Design System - Modern Analytics Theme */
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Analytics-focused primary colors - Deep blue gradient */
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 98%;
+    --primary-dark: 217 91% 45%;
+    --primary-light: 217 91% 75%;
+
+    /* Secondary - Purple accent */
+    --secondary: 252 83% 57%;
+    --secondary-foreground: 0 0% 98%;
+    --secondary-dark: 252 83% 42%;
+    --secondary-light: 252 83% 72%;
+
+    --muted: 215 28% 95%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 215 28% 92%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 215 28% 88%;
+    --input: 215 28% 88%;
+    --ring: 217 91% 60%;
+
+    /* Success color for insights */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 98%;
+
+    /* Warning color for loading states */
+    --warning: 48 96% 53%;
+    --warning-foreground: 222 47% 11%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%), hsl(252 83% 57%));
+    --gradient-subtle: linear-gradient(180deg, hsl(0 0% 98%), hsl(215 28% 95%));
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(215 28% 97%));
+
+    /* Shadows */
+    --shadow-soft: 0 2px 8px -2px hsl(215 28% 17% / 0.1);
+    --shadow-medium: 0 8px 24px -4px hsl(215 28% 17% / 0.12);
+    --shadow-large: 0 20px 40px -8px hsl(215 28% 17% / 0.15);
+    --shadow-glow: 0 0 32px hsl(217 91% 60% / 0.3);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 0 0% 98%;
+
+    --card: 222 47% 11%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 217 91% 75%;
+    --primary-foreground: 222 47% 11%;
+    --primary-dark: 217 91% 60%;
+    --primary-light: 217 91% 85%;
+
+    --secondary: 252 83% 72%;
+    --secondary-foreground: 222 47% 11%;
+    --secondary-dark: 252 83% 57%;
+    --secondary-light: 252 83% 82%;
+
+    --muted: 215 28% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 215 28% 17%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
+    --ring: 217 91% 75%;
+
+    --success: 142 76% 56%;
+    --success-foreground: 222 47% 11%;
+
+    --warning: 48 96% 73%;
+    --warning-foreground: 222 47% 11%;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
