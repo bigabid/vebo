@@ -1,6 +1,10 @@
 // Mock API functions for AWS Athena Explorer
 // These would be replaced with actual API calls to your backend
 
+export interface DataSource { name: string }
+export interface Catalog { name: string }
+export interface Database { name: string }
+
 export interface Table {
   name: string;
 }
@@ -42,14 +46,43 @@ export interface ColumnInsight {
 // Mock delay utility
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Mock data
-const MOCK_TABLES: Table[] = [
-  { name: 'events_prod' },
-  { name: 'purchases_2025' },
-  { name: 'impressions_daily' },
-  { name: 'user_sessions' },
-  { name: 'product_analytics' }
-];
+// Mock data for hierarchy: dataSource -> catalog -> database -> tables
+const MOCK_DATASOURCES: string[] = ['AwsDataCatalog', 'MyLakeFormation'];
+
+const MOCK_CATALOGS: Record<string, string[]> = {
+  AwsDataCatalog: ['AwsDataCatalog'],
+  MyLakeFormation: ['lf-catalog']
+};
+
+const MOCK_DATABASES: Record<string, Record<string, string[]>> = {
+  AwsDataCatalog: {
+    AwsDataCatalog: ['default', 'analytics', 'sales']
+  },
+  MyLakeFormation: {
+    'lf-catalog': ['governed', 'bi']
+  }
+};
+
+// Keyed by `${dataSource}.${catalog}.${database}`
+const MOCK_TABLES_BY_DB: Record<string, Table[]> = {
+  'AwsDataCatalog.AwsDataCatalog.default': [
+    { name: 'events_prod' },
+    { name: 'impressions_daily' }
+  ],
+  'AwsDataCatalog.AwsDataCatalog.analytics': [
+    { name: 'user_sessions' },
+    { name: 'product_analytics' }
+  ],
+  'AwsDataCatalog.AwsDataCatalog.sales': [
+    { name: 'purchases_2025' }
+  ],
+  'MyLakeFormation.lf-catalog.governed': [
+    { name: 'events_prod' }
+  ],
+  'MyLakeFormation.lf-catalog.bi': [
+    { name: 'product_analytics' }
+  ]
+};
 
 const MOCK_PARTITIONS: Record<string, PartitionData> = {
   'events_prod': {
@@ -135,20 +168,87 @@ const MOCK_INSIGHTS: InsightsData = {
 };
 
 // API Functions
-export const fetchTables = async (): Promise<{ tables: Table[] }> => {
-  await delay(800); // Simulate network delay
-  return { tables: MOCK_TABLES };
+export const fetchDataSources = async (): Promise<{ dataSources: string[] }> => {
+  try {
+    const res = await fetch('/api/data-sources');
+    if (!res.ok) throw new Error('Failed');
+    return res.json();
+  } catch {
+    await delay(300);
+    return { dataSources: MOCK_DATASOURCES };
+  }
 };
 
-export const fetchPartitions = async (table: string): Promise<PartitionData> => {
-  await delay(600);
-  return MOCK_PARTITIONS[table] || { partitionKeys: [], partitions: [] };
+export const fetchCatalogs = async (
+  dataSource: string
+): Promise<{ catalogs: string[] }> => {
+  try {
+    const res = await fetch(`/api/catalogs?dataSource=${encodeURIComponent(dataSource)}`);
+    if (!res.ok) throw new Error('Failed');
+    return res.json();
+  } catch {
+    await delay(300);
+    return { catalogs: MOCK_CATALOGS[dataSource] || [] };
+  }
+};
+
+export const fetchDatabases = async (
+  dataSource: string,
+  catalog: string
+): Promise<{ databases: string[] }> => {
+  try {
+    const res = await fetch(`/api/databases?catalog=${encodeURIComponent(catalog)}`);
+    if (!res.ok) throw new Error('Failed');
+    return res.json();
+  } catch {
+    await delay(400);
+    return { databases: (MOCK_DATABASES[dataSource]?.[catalog]) || [] };
+  }
+};
+
+export const fetchTables = async (
+  dataSource: string,
+  catalog: string,
+  database: string
+): Promise<{ tables: Table[] }> => {
+  try {
+    const res = await fetch(`/api/tables?catalog=${encodeURIComponent(catalog)}&database=${encodeURIComponent(database)}`);
+    if (!res.ok) throw new Error('Failed');
+    return res.json();
+  } catch {
+    await delay(800);
+    const key = `${dataSource}.${catalog}.${database}`;
+    return { tables: MOCK_TABLES_BY_DB[key] || [] };
+  }
+};
+
+export const fetchPartitions = async (
+  table: string,
+  params?: { catalog?: string; database?: string }
+): Promise<PartitionData> => {
+  try {
+    if (params?.catalog && params?.database) {
+      const res = await fetch(`/api/partitions?catalog=${encodeURIComponent(params.catalog)}&database=${encodeURIComponent(params.database)}&table=${encodeURIComponent(table)}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    }
+    throw new Error('Missing real params');
+  } catch {
+    await delay(600);
+    return MOCK_PARTITIONS[table] || { partitionKeys: [], partitions: [] };
+  }
 };
 
 export const startInsightsJob = async (
-  table: string,
-  partitions: Record<string, string[]>
+  params: {
+    dataSource: string;
+    catalog: string;
+    database: string;
+    table: string;
+    partitions: Record<string, string[]>;
+  }
 ): Promise<{ jobId: string; status: string }> => {
+  // In this demo we still mock the job exec, but now it has real context
   await delay(400);
   const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   return { jobId, status: 'running' };

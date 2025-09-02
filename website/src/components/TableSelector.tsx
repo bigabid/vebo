@@ -1,5 +1,4 @@
-import { Database, ChevronDown, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Database, Loader2 } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -11,12 +10,15 @@ import { useTables } from '@/hooks/useAthenaApi';
 import { Card } from '@/components/ui/card';
 
 interface TableSelectorProps {
+  dataSource: string | null;
+  catalog: string | null;
+  database: string | null;
   selectedTable: string | null;
   onTableSelect: (table: string) => void;
 }
 
-export function TableSelector({ selectedTable, onTableSelect }: TableSelectorProps) {
-  const { data, isLoading, error } = useTables();
+export function TableSelector({ dataSource, catalog, database, selectedTable, onTableSelect }: TableSelectorProps) {
+  const { data, isLoading, error } = useTables(dataSource, catalog, database);
 
   return (
     <Card className="p-6 bg-gradient-card border-0 shadow-soft">
@@ -30,7 +32,13 @@ export function TableSelector({ selectedTable, onTableSelect }: TableSelectorPro
         </div>
       </div>
 
-      {error ? (
+      {(!dataSource || !catalog || !database) ? (
+        <div className="p-4 bg-muted/50 rounded-lg border border-border">
+          <p className="text-sm text-muted-foreground text-center">
+            Select data source, catalog and database to list tables
+          </p>
+        </div>
+      ) : error ? (
         <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
           <p className="text-sm text-destructive font-medium">Failed to load tables</p>
           <p className="text-xs text-destructive/80 mt-1">Please check your connection and try again</p>

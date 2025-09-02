@@ -7,17 +7,23 @@ import { Badge } from '@/components/ui/badge';
 import { useStartInsights, useJobStatus } from '@/hooks/useAthenaApi';
 import { useToast } from '@/hooks/use-toast';
 
-interface ExecuteButtonProps {
+export interface ExecuteButtonComponentProps {
+  dataSource: string | null;
+  catalog: string | null;
+  database: string | null;
   selectedTable: string | null;
   selectedPartitions: Record<string, string[]>;
   onInsightsReady: (insights: any) => void;
 }
 
 export function ExecuteButton({ 
+  dataSource,
+  catalog,
+  database,
   selectedTable, 
   selectedPartitions, 
   onInsightsReady 
-}: ExecuteButtonProps) {
+}: ExecuteButtonComponentProps) {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const { toast } = useToast();
   
@@ -25,12 +31,15 @@ export function ExecuteButton({
   const jobStatusQuery = useJobStatus(currentJobId, !!currentJobId);
 
   const handleExecute = async () => {
-    if (!selectedTable) return;
+    if (!dataSource || !catalog || !database || !selectedTable) return;
     
     try {
       const result = await startInsightsMutation.mutateAsync({
+        dataSource,
+        catalog,
+        database,
         table: selectedTable,
-        partitions: selectedPartitions
+        partitions: selectedPartitions,
       });
       
       setCurrentJobId(result.jobId);
@@ -71,7 +80,7 @@ export function ExecuteButton({
     setCurrentJobId(null);
   }
 
-  const canExecute = selectedTable && !isRunning && !startInsightsMutation.isPending;
+  const canExecute = !!dataSource && !!catalog && !!database && !!selectedTable && !isRunning && !startInsightsMutation.isPending;
   const selectedCount = Object.values(selectedPartitions).flat().length;
 
   return (

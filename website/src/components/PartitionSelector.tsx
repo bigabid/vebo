@@ -7,17 +7,21 @@ import { Badge } from '@/components/ui/badge';
 import { usePartitions } from '@/hooks/useAthenaApi';
 
 interface PartitionSelectorProps {
+  catalog?: string | null;
+  database?: string | null;
   selectedTable: string | null;
   selectedPartitions: Record<string, string[]>;
   onPartitionChange: (partitions: Record<string, string[]>) => void;
 }
 
 export function PartitionSelector({ 
+  catalog,
+  database,
   selectedTable, 
   selectedPartitions, 
   onPartitionChange 
 }: PartitionSelectorProps) {
-  const { data, isLoading, error } = usePartitions(selectedTable);
+  const { data, isLoading, error } = usePartitions(selectedTable, { catalog: catalog || undefined, database: database || undefined });
 
   // Group partitions by keys for better organization
   const groupedPartitions = useMemo(() => {
