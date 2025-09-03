@@ -12,8 +12,8 @@ import sys
 import os
 from pathlib import Path
 
-# Add the src directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# Add the python directory to the path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'python'))
 
 from vebo_profiler import VeboProfiler
 from vebo_profiler.core.profiler import ProfilingConfig
@@ -28,8 +28,8 @@ def download_titanic_dataset() -> pd.DataFrame:
         Titanic DataFrame
     """
     # Create data directory if it doesn't exist
-    data_dir = Path("data")
-    data_dir.mkdir(exist_ok=True)
+    data_dir = Path(__file__).parent.parent / "datasets" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
     
     # Download the dataset if not already present
     train_file = data_dir / "train.csv"
