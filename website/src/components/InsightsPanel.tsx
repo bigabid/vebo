@@ -57,6 +57,9 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
   const typeColor = getTypeColor(column.type);
   const nullPercentage = Math.round(column.nullRatio * 100);
 
+  const formatNumber = (n?: number | null) =>
+    typeof n === 'number' && isFinite(n) ? n.toLocaleString() : '—';
+
   return (
     <Card className="p-5 bg-gradient-card border-0 shadow-soft hover:shadow-medium transition-shadow">
       <div className="space-y-4">
@@ -97,15 +100,15 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
             <div className="grid grid-cols-3 gap-3 text-sm">
               <div>
                 <span className="text-muted-foreground block">Min</span>
-                <span className="font-medium">{column.numeric.min.toLocaleString()}</span>
+                <span className="font-medium">{formatNumber(column.numeric.min)}</span>
               </div>
               <div>
                 <span className="text-muted-foreground block">Avg</span>
-                <span className="font-medium">{column.numeric.avg.toLocaleString()}</span>
+                <span className="font-medium">{formatNumber(column.numeric.avg)}</span>
               </div>
               <div>
                 <span className="text-muted-foreground block">Max</span>
-                <span className="font-medium">{column.numeric.max.toLocaleString()}</span>
+                <span className="font-medium">{formatNumber(column.numeric.max)}</span>
               </div>
             </div>
           </div>

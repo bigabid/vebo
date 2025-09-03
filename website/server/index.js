@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { AthenaClient, ListDataCatalogsCommand, ListDatabasesCommand, ListTableMetadataCommand } from '@aws-sdk/client-athena';
+import { AthenaClient, ListDataCatalogsCommand, ListDatabasesCommand, ListTableMetadataCommand, StartQueryExecutionCommand } from '@aws-sdk/client-athena';
 import { GlueClient, GetPartitionsCommand, GetTableCommand } from '@aws-sdk/client-glue';
 
 const app = express();
@@ -99,6 +99,55 @@ app.get('/api/partitions', async (req, res) => {
     res.json({ partitionKeys, partitions });
   } catch (e) {
     res.status(500).json({ error: e?.message || 'Failed to list partitions' });
+  }
+});
+
+// Start an Athena query execution based on user selections
+app.post('/api/execute', async (req, res) => {
+  try {
+    const { catalog, database, table, partitions } = req.body || {};
+    if (!catalog || !database || !table) {
+      return res.status(400).json({ error: 'Missing catalog, database or table' });
+    }
+
+    const outputLocation = process.env.ATHENA_OUTPUT_S3;
+    if (!outputLocation) {
+      return res.status(500).json({ error: 'ATHENA_OUTPUT_S3 env var is required (e.g., s3://my-bucket/athena-results/)' });
+    }
+
+    // Build WHERE clause from partitions: { key: [v1,v2] }
+    const whereClauses = [];
+    if (partitions && typeof partitions === 'object') {
+      for (const [key, values] of Object.entries(partitions)) {
+        if (Array.isArray(values) && values.length > 0) {
+          const quotedVals = values.map(v => `'${String(v).replace(/'/g, "''")}'`).join(', ');
+          whereClauses.push(`"${key}" IN (${quotedVals})`);
+        }
+      }
+    }
+
+    const whereSql = whereClauses.length ? ` WHERE ${whereClauses.join(' AND ')}` : '';
+    const queryString = `SELECT * FROM "${database}"."${table}"${whereSql} LIMIT 100000`;
+
+    const params = {
+      QueryString: queryString,
+      QueryExecutionContext: {
+        Catalog: String(catalog),
+        Database: String(database),
+      },
+      ResultConfiguration: {
+        OutputLocation: outputLocation,
+      },
+      WorkGroup: process.env.ATHENA_WORKGROUP || undefined,
+    };
+
+    const out = await athena.send(new StartQueryExecutionCommand(params));
+    const executionId = out.QueryExecutionId;
+    if (!executionId) throw new Error('No QueryExecutionId returned');
+
+    res.json({ executionId });
+  } catch (e) {
+    res.status(500).json({ error: e?.message || 'Failed to start query execution' });
   }
 });
 

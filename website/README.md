@@ -60,6 +60,49 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Running the Athena Insights flow locally
+
+Set environment variables and run three processes: UI, Node server, and Python insights API.
+
+1) Node server (Athena metadata + execute)
+
+Required env:
+
+- `AWS_REGION` or `AWS_DEFAULT_REGION`
+- `AWS_PROFILE` (optional)
+- `ATHENA_OUTPUT_S3` (e.g., `s3://my-bucket/athena-results/`)
+- `ATHENA_WORKGROUP` (optional)
+
+Start:
+
+```bash
+cd website
+node server/index.js
+```
+
+2) Python insights API (poll Athena, run profiler)
+
+Install deps and run:
+
+```bash
+cd ../python
+pip install -r requirements.txt
+uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+3) UI
+
+```bash
+cd ../website
+VITE_INSIGHTS_API=http://localhost:8000 npm run dev
+```
+
+Flow:
+
+- UI calls `POST /api/execute` on Node to start Athena query and receive `executionId`.
+- UI calls Python `POST /insights/start` with the `executionId`.
+- UI polls Python `GET /insights/status?jobId=...` until status is `complete` and then renders insights.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/d647a14c-4bf1-4aca-82dd-bfca0318e417) and click on Share -> Publish.

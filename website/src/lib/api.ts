@@ -239,6 +239,8 @@ export const fetchPartitions = async (
   }
 };
 
+const INSIGHTS_API = (import.meta as any).env?.VITE_INSIGHTS_API || 'http://localhost:8000';
+
 export const startInsightsJob = async (
   params: {
     dataSource: string;
@@ -248,29 +250,42 @@ export const startInsightsJob = async (
     partitions: Record<string, string[]>;
   }
 ): Promise<{ jobId: string; status: string }> => {
-  // In this demo we still mock the job exec, but now it has real context
-  await delay(400);
-  const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  return { jobId, status: 'running' };
+  // 1) Ask Node server to start Athena query and return executionId
+  const res = await fetch('/api/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      catalog: params.catalog,
+      database: params.database,
+      table: params.table,
+      partitions: params.partitions,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error('Failed to start Athena query');
+  }
+  const { executionId } = await res.json();
+
+  // 2) Tell Python service to start insights processing for that executionId
+  const pyRes = await fetch(`${INSIGHTS_API}/insights/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      executionId,
+      table: params.table,
+      appliedFilters: params.partitions,
+    }),
+  });
+  if (!pyRes.ok) {
+    throw new Error('Failed to start insights job');
+  }
+  return pyRes.json();
 };
 
 export const getJobStatus = async (jobId: string): Promise<InsightsJob> => {
-  await delay(300);
-  
-  // Simulate job progression
-  const progress = Math.min(100, (Date.now() % 10000) / 100);
-  
-  if (progress < 90) {
-    return {
-      jobId,
-      status: 'running',
-      progress: Math.floor(progress)
-    };
+  const res = await fetch(`${INSIGHTS_API}/insights/status?jobId=${encodeURIComponent(jobId)}`);
+  if (!res.ok) {
+    throw new Error('Failed to get job status');
   }
-  
-  return {
-    jobId,
-    status: 'complete',
-    insights: MOCK_INSIGHTS
-  };
+  return res.json();
 };
