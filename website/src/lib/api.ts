@@ -55,6 +55,16 @@ export interface InsightsData {
     confidence: number;
     reason?: string;
   }>;
+  crossColumn?: CrossColumnResult[];
+}
+
+export interface CrossColumnResult {
+  checkId?: string;
+  name?: string;
+  status?: string;
+  message?: string;
+  columns?: (string | undefined)[] | null;
+  details?: Record<string, any>;
 }
 
 export interface ColumnInsight {

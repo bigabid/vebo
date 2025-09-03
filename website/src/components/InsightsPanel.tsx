@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import type { InsightsData, ColumnInsight } from '@/lib/api';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface InsightsPanelProps {
   insights: InsightsData | null;
@@ -317,18 +318,82 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
         />
       </div>
 
-      {/* Column Analysis */}
-      <div>
-        <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Type className="w-5 h-5" />
-          Column Analysis
-        </h3>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {insights.columns.map((column, index) => (
-            <ColumnInsightCard key={index} column={column} />
-          ))}
-        </div>
-      </div>
+      {/* Tabs for analyses */}
+      <Tabs defaultValue="columns" className="w-full">
+        <TabsList>
+          <TabsTrigger value="columns">Column Analysis</TabsTrigger>
+          <TabsTrigger value="cross">Cross Column</TabsTrigger>
+        </TabsList>
+        <TabsContent value="columns" className="mt-4">
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+              <Type className="w-5 h-5" />
+              Column Analysis
+            </h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {insights.columns.map((column, index) => (
+                <ColumnInsightCard key={index} column={column} />
+              ))}
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="cross" className="mt-4">
+          <Card className="p-5 bg-gradient-card border-0 shadow-soft">
+            <h3 className="text-lg font-semibold text-foreground mb-3">Cross Column Analysis</h3>
+            {(() => {
+              const crossList = (insights.crossColumn || []).filter(cc => {
+                const nameLower = (cc.name || '').toLowerCase();
+                const id = cc.checkId || '';
+                const statusLower = (cc.status || '').toLowerCase();
+                const isPassed = statusLower === 'passed';
+                const isIdenticality = (nameLower === 'column identicality') || id === 'identicality';
+                const isCorrelation = (nameLower === 'numeric correlation') || id === 'correlation';
+                const isMissingness = (nameLower === 'missingness relationships') || id === 'missingness_relationships';
+                // Hide Column Identicality when passed
+                if (isIdenticality && isPassed) return false;
+                // Hide Missingness Relationships when passed
+                if (isMissingness && isPassed) return false;
+                // Show Numeric Correlation only when passed
+                if (isCorrelation && !isPassed) return false;
+                return true;
+              });
+              return crossList.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No cross-column results available.</div>
+              ) : (
+                <div className="space-y-3">
+                  {crossList.map((cc, idx) => (
+                    <div key={idx} className="border border-border rounded-md p-3 bg-background">
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium text-foreground truncate mr-2">{cc.name || cc.checkId}</div>
+                        {cc.status && (
+                          <Badge variant={cc.status === 'passed' ? 'secondary' : (cc.status === 'warning' ? 'outline' : 'destructive')} className="text-xs capitalize">
+                            {cc.status}
+                          </Badge>
+                        )}
+                      </div>
+                      {cc.columns && (
+                        <div className="text-xs text-muted-foreground mt-1">{(cc.columns.filter(Boolean) as string[]).join(' ↔ ')}</div>
+                      )}
+                      {cc.message && (
+                        <div className="text-sm mt-2 text-foreground">{cc.message}</div>
+                      )}
+                      {cc.details && cc.details.correlation != null && (
+                        <div className="text-xs mt-2 text-muted-foreground">Correlation: {typeof cc.details.correlation === 'number' ? cc.details.correlation.toFixed(3) : String(cc.details.correlation)}</div>
+                      )}
+                      {cc.details && cc.details.cramers_v != null && (
+                        <div className="text-xs text-muted-foreground">Cramér’s V: {typeof cc.details.cramers_v === 'number' ? cc.details.cramers_v.toFixed(3) : String(cc.details.cramers_v)}</div>
+                      )}
+                      {cc.details && cc.details.jaccard_similarity != null && (
+                        <div className="text-xs text-muted-foreground">Jaccard: {typeof cc.details.jaccard_similarity === 'number' ? cc.details.jaccard_similarity.toFixed(3) : String(cc.details.jaccard_similarity)}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

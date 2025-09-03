@@ -531,11 +531,6 @@ def _process_job(job_id: str, execution_id: str, table: str, applied_filters: Di
                 
                 profiling_result = profiler.profile_dataframe(df, filename=table)
                 
-                # Check for cancellation after profiling completes
-                current_job = JOBS.get(job_id)
-                if current_job and current_job.status == "cancelled":
-                    return
-                
                 # Update job progress during post-processing
                 logger.set_stage("post_processing")
                 logger.info(
@@ -554,6 +549,28 @@ def _process_job(job_id: str, execution_id: str, table: str, applied_filters: Di
                 profiling_json = profiler.to_json(profiling_result)
                 data = json.loads(profiling_json)
                 insights = _map_profiler_to_insights(table, applied_filters, df, data)
+
+                # Attach cross-column checks (raw)
+                try:
+                    cc_checks = data.get("cross_column_analysis", {}).get("checks", [])
+                except Exception:
+                    cc_checks = []
+                # Normalize list of checks to a simpler structure
+                cross_results = []
+                for chk in cc_checks:
+                    if not isinstance(chk, dict):
+                        continue
+                    details = chk.get("details") if isinstance(chk.get("details"), dict) else {}
+                    compared = details.get("compared_columns") if isinstance(details.get("compared_columns"), dict) else {}
+                    cross_results.append({
+                        "checkId": chk.get("check_id") or chk.get("rule_id"),
+                        "name": chk.get("name"),
+                        "status": chk.get("status"),
+                        "message": chk.get("message"),
+                        "columns": [compared.get("column_1"), compared.get("column_2")] if compared else None,
+                        "details": details,
+                    })
+                insights["crossColumn"] = cross_results
                 
                 logger.info(
                     stage="post_processing",
