@@ -198,7 +198,8 @@ class MetaRuleDetector:
         diversity_level = self.detect_diversity_level(series)
         nullability_level = self.detect_nullability_level(series)
         
-        unique_count = series.nunique()
+        # Use len(set()) for better performance, excluding NaN values like nunique()
+        unique_count = len(set(series.dropna()))
         total_count = len(series)
         null_count = series.isnull().sum()
         
@@ -297,7 +298,7 @@ class MetaRuleDetector:
             non_null = series.dropna()
             if len(non_null) == 0:
                 return TypeCategory.UNKNOWN
-            nunique = non_null.nunique()
+            nunique = len(set(non_null))
             # If duplicates exist and small set, categorical; else textual
             if nunique < len(non_null) and nunique <= 10:
                 return TypeCategory.CATEGORICAL
@@ -313,12 +314,12 @@ class MetaRuleDetector:
             # If all observed are strings, textual unless very small set with duplicates
             sample = list(non_null.head(min(50, len(non_null))))
             if all(isinstance(x, str) for x in sample):
-                nunique = non_null.nunique()
+                nunique = len(set(non_null))
                 if nunique < len(non_null) and nunique <= 10:
                     return TypeCategory.CATEGORICAL
                 return TypeCategory.TEXTUAL
             # Small set of distinct values => categorical
-            if non_null.nunique() <= 10:
+            if len(set(non_null)) <= 10:
                 return TypeCategory.CATEGORICAL
             return TypeCategory.UNKNOWN
         # Categorical dtype
@@ -383,6 +384,38 @@ class MetaRuleDetector:
             return df
         
         return df.sample(n=sample_size, random_state=self.seed)
+    
+    def get_optimal_sample_size(self, series: pd.Series, base_sample_size: int = 10000) -> int:
+        """
+        Determine optimal sample size based on column characteristics.
+        
+        Args:
+            series: Pandas Series to analyze
+            base_sample_size: Base sample size for normal columns
+            
+        Returns:
+            Optimal sample size for this column
+        """
+        if len(series) <= base_sample_size:
+            return len(series)
+            
+        # Calculate unique ratio efficiently using len(set())
+        non_null = series.dropna()
+        if len(non_null) == 0:
+            return min(1000, len(series))  # Small sample for all-null columns
+            
+        unique_count = len(set(non_null))
+        unique_ratio = unique_count / len(non_null)
+        
+        # For high-cardinality columns (nearly unique), use larger samples
+        if unique_ratio > 0.8:
+            return min(50000, len(series))
+        # For low diversity columns, smaller sample is sufficient
+        elif unique_ratio < 0.1:
+            return min(5000, len(series))
+        # Standard columns
+        else:
+            return min(base_sample_size, len(series))
     
     def get_relevant_rule_categories(self, attributes: ColumnAttributes) -> List[str]:
         """

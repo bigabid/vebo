@@ -342,6 +342,10 @@ class VeboProfiler:
                              column_attributes: Dict[str, ColumnAttributes]) -> List[tuple]:
         """
         Generate column pairs for cross-column analysis.
+        Skips pairs where:
+        - One column is constant (has only one unique value)
+        - One column has all nulls 
+        - Duplicate combinations (already handled by i+1 indexing)
         
         Args:
             df: DataFrame to analyze
@@ -350,6 +354,8 @@ class VeboProfiler:
         Returns:
             List of column pairs
         """
+        from .meta_rules import DiversityLevel
+        
         column_pairs = []
         columns = list(df.columns)
         
@@ -363,7 +369,17 @@ class VeboProfiler:
                 attr2 = column_attributes.get(col2)
                 
                 if attr1 and attr2:
-                    # Only include pairs where both columns have some data
+                    # Skip if either column is constant (only one unique value)
+                    if (attr1.diversity_level == DiversityLevel.CONSTANT or 
+                        attr2.diversity_level == DiversityLevel.CONSTANT):
+                        continue
+                    
+                    # Skip if either column has all nulls
+                    if (attr1.null_count == attr1.total_count or 
+                        attr2.null_count == attr2.total_count):
+                        continue
+                    
+                    # Only include pairs where both columns have some meaningful data
                     if attr1.null_count < attr1.total_count and attr2.null_count < attr2.total_count:
                         column_pairs.append((col1, col2))
         

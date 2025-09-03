@@ -22,6 +22,22 @@ A comprehensive data profiling system that automatically generates and executes 
 - **Comprehensive Output**: Structured JSON results with detailed metrics
 - **Error Resilience**: Continues execution even when individual checks fail
 
+## Analysis Philosophy
+
+**Content-Based Analysis Only**: Vebo analyzes data based exclusively on column content and data characteristics, never on column names. This ensures:
+
+- **Reliable Insights**: Analysis decisions are based on actual data patterns, not naming conventions
+- **Universal Applicability**: Works across different naming schemas and languages
+- **Content Accuracy**: Column names may be misleading; data content never lies
+- **Schema Independence**: Analysis quality is unaffected by poor or inconsistent naming
+
+### What This Means
+- ✅ **Column content** drives all analysis decisions
+- ✅ **Data characteristics** (type, diversity, nullability) determine rule applicability
+- ✅ **Statistical properties** inform optimization and sampling strategies
+- ❌ **Column names** are used only for identification, never for analysis logic
+- ❌ **Naming patterns** do not influence rule selection or execution
+
 ## Quick Start
 
 ### Installation

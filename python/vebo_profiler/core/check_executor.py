@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import multiprocessing as mp
 
 from .rule_engine import Rule, RuleResult, RuleStatus
-from .meta_rules import ColumnAttributes, MetaRuleDetector
+from .meta_rules import ColumnAttributes, MetaRuleDetector, DiversityLevel
 
 
 @dataclass

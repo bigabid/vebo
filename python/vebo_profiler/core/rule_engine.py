@@ -10,8 +10,11 @@ import json
 from pathlib import Path
 import json
 from pathlib import Path
+from functools import lru_cache
+import hashlib
+import warnings
 
-from .meta_rules import ColumnAttributes, MetaRuleDetector
+from .meta_rules import ColumnAttributes, MetaRuleDetector, TypeCategory, DiversityLevel
 
 
 class RuleStatus(Enum):
@@ -156,7 +159,8 @@ class RuleEngine:
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_unique_count(series: pd.Series) -> Dict[str, Any]:
-    unique_count = series.nunique()
+    # Use len(set()) for better performance, excluding NaN values like nunique()
+    unique_count = len(set(series.dropna()))
     total_count = len(series)
     unique_ratio = unique_count / total_count if total_count > 0 else 0
     
@@ -580,9 +584,9 @@ def check_whitespace_encoding_checks(series: pd.Series) -> Dict[str, Any]:
     total = len(s)
     if total == 0:
         return {"status": "warning", "message": "Empty series"}
-    leading_ws = s.str.match(r'^\s+').sum()
-    trailing_ws = s.str.match(r'.*\s+$').sum()
-    whitespace_only = s.str.match(r'^\s*$').sum()
+    leading_ws = s.str.match(r'^\\s+').sum()
+    trailing_ws = s.str.match(r'.*\\s+$').sum()
+    whitespace_only = s.str.match(r'^\\s*$').sum()
     def _has_nonprintable(x: str) -> bool:
         try:
             return any(ord(ch) < 32 or ord(ch) == 127 for ch in x)
@@ -612,9 +616,9 @@ def check_text_patterns(series: pd.Series) -> Dict[str, Any]:
     string_series = series.astype(str)
     
     # Check for common patterns
-    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    phone_pattern = r'^\+?[\d\s\-\(\)]{10,}$'
-    url_pattern = r'^https?://[^\s/$.?#].[^\s]*$'
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'
+    phone_pattern = r'^\\+?[\\d\\s\\-\\(\\)]{10,}$'
+    url_pattern = r'^https?://[^\\s/$\\.?#]\\.[^\\s]*$'
     
     email_matches = string_series.str.match(email_pattern, na=False).sum()
     phone_matches = string_series.str.match(phone_pattern, na=False).sum()
@@ -823,7 +827,9 @@ def check_missingness_relationships(df: pd.DataFrame, col1: str, col2: str) -> D
                 requires_cross_column=True,
                 code_template="""
 def check_functional_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
-    g = df[[col1, col2]].dropna().groupby(col1, dropna=False)[col2].nunique()
+    # Group by col1 and check uniqueness of col2 values for functional dependency
+    grouped_data = df[[col1, col2]].dropna().groupby(col1, dropna=False)[col2]
+    g = grouped_data.apply(lambda x: len(set(x)))
     if len(g) == 0:
         return {"status": "warning", "message": "Insufficient data", "fd_holds_ratio": 0}
     violating = (g > 1).sum()
@@ -944,11 +950,11 @@ def check_pii_pattern_detection(series: pd.Series) -> Dict[str, Any]:
         return {"status": "warning", "message": "No data", "pattern_counts": {}}
     
     pii_patterns = {
-        'email_pattern': r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
-        'phone_pattern': r'^\+?[\d\s\-\(\)]{10,}$',
-        'ssn_pattern': r'^\d{3}-?\d{2}-?\d{4}$',
-        'credit_card_pattern': r'^\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}$',
-        'ip_address_pattern': r'^(?:\d{1,3}\.){3}\d{1,3}$'
+        'email_pattern': r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$',
+        'phone_pattern': r'^\\+?[\\d\\s\\-\\(\\)]{10,}$',
+        'ssn_pattern': r'^\\d{3}-?\\d{2}-?\\d{4}$',
+        'credit_card_pattern': r'^\\d{4}[\\s\\-]?\\d{4}[\\s\\-]?\\d{4}[\\s\\-]?\\d{4}$',
+        'ip_address_pattern': r'^(?:\\d{1,3}\\.){3}\\d{1,3}$'
     }
     
     pattern_counts = {}
@@ -990,7 +996,7 @@ def check_data_format_patterns(series: pd.Series) -> Dict[str, Any]:
     
     # Simple format pattern detection
     format_patterns = {
-        'masked_asterisk': r'\*{3,}',
+        'masked_asterisk': r'\\*{3,}',
         'masked_x': r'[xX]{3,}',
         'hex_string': r'^[0-9a-fA-F]{8,}$',
         'base64_like': r'^[A-Za-z0-9+/]{20,}=*$',
@@ -1032,68 +1038,7 @@ def check_data_format_patterns(series: pd.Series) -> Dict[str, Any]:
     def _add_advanced_cross_column_rules(self):
         """Add advanced cross-column analysis rules."""
         rules = [
-            Rule(
-                id="column_name_similarity",
-                name="Column Name Similarity",
-                description="Calculate similarity between column names to identify relationships",
-                category="advanced_cross_column",
-                column_types=["numeric", "textual", "temporal", "categorical"],
-                diversity_levels=["low", "medium", "high", "distinctive", "fully_unique"],
-                nullability_levels=["empty", "low", "medium", "high"],
-                requires_cross_column=True,
-                code_template="""
-def check_column_name_similarity(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
-    import difflib
-    
-    # Calculate name similarity
-    name_similarity = difflib.SequenceMatcher(None, col1.lower(), col2.lower()).ratio()
-    
-    # Check for common prefixes/suffixes
-    col1_lower = col1.lower()
-    col2_lower = col2.lower()
-    
-    common_prefix_len = 0
-    for i, (c1, c2) in enumerate(zip(col1_lower, col2_lower)):
-        if c1 == c2:
-            common_prefix_len = i + 1
-        else:
-            break
-    
-    common_suffix_len = 0
-    for i, (c1, c2) in enumerate(zip(reversed(col1_lower), reversed(col2_lower))):
-        if c1 == c2:
-            common_suffix_len = i + 1
-        else:
-            break
-    
-    # Check for semantic relationships
-    relationship_indicators = {
-        'start_end': ('start' in col1_lower and 'end' in col2_lower) or 
-                    ('end' in col1_lower and 'start' in col2_lower),
-        'min_max': ('min' in col1_lower and 'max' in col2_lower) or 
-                  ('max' in col1_lower and 'min' in col2_lower),
-        'first_last': ('first' in col1_lower and 'last' in col2_lower) or 
-                     ('last' in col1_lower and 'first' in col2_lower)
-    }
-    
-    semantic_relationship = None
-    for rel_type, has_relationship in relationship_indicators.items():
-        if has_relationship:
-            semantic_relationship = rel_type
-            break
-    
-    return {
-        "name_similarity": float(name_similarity),
-        "common_prefix_length": common_prefix_len,
-        "common_suffix_length": common_suffix_len,
-        "semantic_relationship": semantic_relationship,
-        "col1_name": col1,
-        "col2_name": col2,
-        "status": "passed",
-        "message": f"Name similarity: {name_similarity:.2f}, semantic: {semantic_relationship or 'none'}"
-    }
-"""
-            ),
+
             
             Rule(
                 id="value_overlap_analysis",
@@ -1183,7 +1128,7 @@ def check_memory_usage_analysis(series: pd.Series) -> Dict[str, Any]:
     # For object/string columns, check categorical potential
     categorical_potential = False
     if pd.api.types.is_object_dtype(series):
-        unique_count = series.nunique()
+        unique_count = len(set(series.dropna()))
         if unique_count < total_count * 0.5:  # Less than 50% unique
             categorical_potential = True
     
@@ -1212,7 +1157,8 @@ def check_memory_usage_analysis(series: pd.Series) -> Dict[str, Any]:
                 code_template="""
 def check_cardinality_analysis(series: pd.Series) -> Dict[str, Any]:
     total_count = len(series)
-    unique_count = series.nunique()
+    # Use len(set()) for better performance, excluding NaN values like nunique()
+    unique_count = len(set(series.dropna()))
     null_count = series.isnull().sum()
     non_null_count = total_count - null_count
     
@@ -1293,6 +1239,10 @@ def check_cardinality_analysis(series: pd.Series) -> Dict[str, Any]:
             if self._should_skip_rule_for_index(rule, attributes):
                 continue
             
+            # Skip expensive rules inappropriate for column characteristics
+            if self._should_skip_expensive_rule(rule, attributes):
+                continue
+            
             relevant_rules.append(rule)
         
         return relevant_rules
@@ -1352,6 +1302,239 @@ def check_cardinality_analysis(series: pd.Series) -> Dict[str, Any]:
             return True
         
         return False
+    
+    def _should_skip_expensive_rule(self, rule: Rule, attributes: ColumnAttributes) -> bool:
+        """
+        Determine if an expensive rule should be skipped based on column characteristics.
+        
+        Args:
+            rule: Rule to check
+            attributes: Column attributes
+            
+        Returns:
+            True if the rule should be skipped for this column type/characteristics
+        """
+        # Skip statistical rules for binary columns (only 2 unique values)
+        if attributes.diversity_level == DiversityLevel.BINARY:
+            binary_inappropriate_rules = {
+                "outlier_detection", "modality_estimation", "distribution_analysis",
+                "outlier_detection_zscore", "numeric_histogram_quantiles"
+            }
+            if rule.id in binary_inappropriate_rules:
+                return True
+        
+        # Skip text analysis for numeric columns
+        if attributes.type_category == TypeCategory.NUMERIC:
+            text_rules = {
+                "text_patterns", "whitespace_encoding_checks", "length_analysis",
+                "text_quality", "encoding_detection"
+            }
+            if rule.id in text_rules or "text_pattern" in rule.id or "encoding" in rule.id:
+                return True
+        
+        # Skip correlation and statistical analysis for categorical columns
+        # (regardless of cardinality as user specified)
+        if attributes.type_category == TypeCategory.CATEGORICAL:
+            categorical_inappropriate_rules = {
+                "correlation", "outlier_detection", "numeric_stats", 
+                "distribution_analysis", "modality_estimation"
+            }
+            if rule.id in categorical_inappropriate_rules:
+                return True
+        
+        return False
+    
+    def _generate_column_hash(self, series: pd.Series) -> str:
+        """
+        Generate a hash for column content to enable caching.
+        WARNING: This can be memory-intensive for large columns.
+        
+        Args:
+            series: Pandas Series to hash
+            
+        Returns:
+            Hash string representing the column content
+        """
+        # Sample the series for large datasets to avoid memory issues
+        if len(series) > 10000:
+            warnings.warn(
+                "Generating hash for large column (>10K rows). This may consume significant memory.",
+                MemoryWarning
+            )
+            # Use a sample for hashing to reduce memory usage
+            sample_series = series.sample(n=min(10000, len(series)), random_state=42)
+        else:
+            sample_series = series
+            
+        # Create a hash based on series content and metadata
+        content_str = f"{sample_series.dtype}_{len(series)}_{sample_series.to_string()}"
+        return hashlib.md5(content_str.encode()).hexdigest()
+    
+    @lru_cache(maxsize=1000)
+    def _get_cached_column_attributes(self, col_hash: str, col_name: str, 
+                                    dtype_str: str, length: int) -> Optional[str]:
+        """
+        Cache column attribute calculations.
+        WARNING: Large cache sizes can consume significant memory.
+        
+        Args:
+            col_hash: Hash of the column content
+            col_name: Column name
+            dtype_str: String representation of data type
+            length: Number of rows
+            
+        Returns:
+            Cached attribute identifier or None if not cached
+        """
+        # This is a placeholder for cached attributes
+        # In practice, you'd store the actual ColumnAttributes objects
+        return f"cached_{col_hash}_{dtype_str}_{length}"
+    
+    @lru_cache(maxsize=500)
+    def _is_rule_applicable_cached(self, rule_id: str, type_cat: str, 
+                                 diversity: str, nullability: str) -> bool:
+        """
+        Cache rule applicability decisions for performance.
+        
+        Args:
+            rule_id: Rule identifier
+            type_cat: Type category string
+            diversity: Diversity level string
+            nullability: Nullability level string
+            
+        Returns:
+            True if rule is applicable
+        """
+        rule = self.get_rule(rule_id)
+        if not rule:
+            return False
+            
+        # Check rule applicability based on attributes
+        if type_cat not in rule.column_types:
+            return False
+        if diversity not in rule.diversity_levels:
+            return False
+        if nullability not in rule.nullability_levels:
+            return False
+            
+        return True
+    
+    def clear_caches(self):
+        """
+        Clear all caches to free memory.
+        Call this method if memory usage becomes a concern.
+        """
+        self._get_cached_column_attributes.cache_clear()
+        self._is_rule_applicable_cached.cache_clear()
+        warnings.warn("Rule engine caches have been cleared to free memory.", UserWarning)
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about cache usage for monitoring.
+        
+        Returns:
+            Dictionary with cache statistics
+        """
+        return {
+            "column_attributes_cache": self._get_cached_column_attributes.cache_info(),
+            "rule_applicability_cache": self._is_rule_applicable_cached.cache_info()
+        }
+    
+    def determine_analysis_depth(self, attributes: ColumnAttributes) -> str:
+        """
+        Determine appropriate analysis depth based on column characteristics.
+        Allows progressive analysis - start shallow, deepen only for interesting columns.
+        
+        Args:
+            attributes: Column attributes
+            
+        Returns:
+            Analysis depth level: "basic", "standard", or "deep"
+        """
+        # Basic analysis for constant columns (no variation to analyze)
+        if attributes.diversity_level == DiversityLevel.CONSTANT:
+            return "basic"
+        
+        # Basic analysis for columns that are likely indices (already covered by other logic)
+        if attributes.is_likely_index:
+            return "basic"
+        
+        # Standard analysis is the default for most columns
+        # Deep analysis reserved for columns with rich patterns worth investigating
+        if (attributes.diversity_level in [DiversityLevel.HIGH, DiversityLevel.DISTINCTIVE] and
+            attributes.type_category in [TypeCategory.NUMERIC, TypeCategory.TEXTUAL]):
+            return "deep"
+        
+        return "standard"
+    
+    def get_rules_by_analysis_depth(self, depth: str) -> List[str]:
+        """
+        Get rule IDs appropriate for a specific analysis depth.
+        
+        Args:
+            depth: Analysis depth ("basic", "standard", "deep")
+            
+        Returns:
+            List of rule IDs appropriate for this depth
+        """
+        analysis_levels = {
+            "basic": [
+                "null_analysis", "unique_count", "most_common_value", 
+                "basic_stats", "memory_usage_analysis"
+            ],
+            "standard": [
+                # Includes basic rules plus:
+                "data_type_inference", "top_k_frequencies", "parseability_analysis",
+                "pii_pattern_detection", "cardinality_analysis", "length_analysis"
+            ],
+            "deep": [
+                # Includes standard rules plus:
+                "outlier_detection", "distribution_analysis", "modality_estimation",
+                "outlier_detection_zscore", "numeric_histogram_quantiles",
+                "text_patterns", "whitespace_encoding_checks", "stability_entropy",
+                "correlation"  # For cross-column analysis
+            ]
+        }
+        
+        # Build cumulative rule list
+        rules_for_depth = []
+        if depth in ["basic", "standard", "deep"]:
+            rules_for_depth.extend(analysis_levels["basic"])
+        if depth in ["standard", "deep"]:
+            rules_for_depth.extend(analysis_levels["standard"])
+        if depth == "deep":
+            rules_for_depth.extend(analysis_levels["deep"])
+            
+        return rules_for_depth
+    
+    def get_relevant_rules_with_depth(self, attributes: ColumnAttributes, 
+                                    enable_cross_column: bool = True,
+                                    force_depth: str = None) -> List[Rule]:
+        """
+        Get rules relevant for a column based on attributes and analysis depth.
+        
+        Args:
+            attributes: Column attributes
+            enable_cross_column: Whether to include cross-column rules
+            force_depth: Override automatic depth determination
+            
+        Returns:
+            List of relevant rules filtered by analysis depth
+        """
+        # Determine analysis depth
+        depth = force_depth or self.determine_analysis_depth(attributes)
+        appropriate_rule_ids = set(self.get_rules_by_analysis_depth(depth))
+        
+        # Get base relevant rules
+        relevant_rules = self.get_relevant_rules(attributes, enable_cross_column)
+        
+        # Filter by analysis depth
+        depth_filtered_rules = [
+            rule for rule in relevant_rules 
+            if rule.id in appropriate_rule_ids
+        ]
+        
+        return depth_filtered_rules
     
     def get_rule(self, rule_id: str) -> Optional[Rule]:
         """Get a rule by ID."""
