@@ -28,6 +28,7 @@ class DiversityLevel(Enum):
     MEDIUM = "medium"
     HIGH = "high"
     DISTINCTIVE = "distinctive"
+    FULLY_UNIQUE = "fully_unique"
 
 
 class NullabilityLevel(Enum):
@@ -51,6 +52,7 @@ class ColumnAttributes:
     null_count: int
     most_common_value: Any = None
     most_common_frequency: int = 0
+    is_likely_index: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         """Compatibility helper for tests expecting a dict form."""
@@ -64,6 +66,7 @@ class ColumnAttributes:
             "null_count": int(self.null_count),
             "most_common_value": self.most_common_value,
             "most_common_frequency": int(self.most_common_frequency),
+            "is_likely_index": bool(self.is_likely_index),
         }
 
 
@@ -130,6 +133,11 @@ class MetaRuleDetector:
         
         if unique_count == 1:
             return DiversityLevel.CONSTANT
+        
+        # Check for fully unique columns first (every non-null value is unique)
+        if unique_ratio == 1.0 and total_count > 1:
+            return DiversityLevel.FULLY_UNIQUE
+            
         if unique_count == 2:
             # Treat boolean-like or 0/1 as BINARY, otherwise LOW
             non_null_vals = set(series.dropna().unique())
@@ -203,6 +211,9 @@ class MetaRuleDetector:
             most_common_value = None
             most_common_frequency = 0
         
+        # Determine if this is likely an index/identifier column
+        is_likely_index = self._detect_likely_index(series, type_category, diversity_level)
+        
         return ColumnAttributes(
             name=series.name,
             type_category=type_category,
@@ -212,8 +223,62 @@ class MetaRuleDetector:
             total_count=total_count,
             null_count=null_count,
             most_common_value=most_common_value,
-            most_common_frequency=most_common_frequency
+            most_common_frequency=most_common_frequency,
+            is_likely_index=is_likely_index
         )
+    
+    def _detect_likely_index(self, series: pd.Series, type_category: TypeCategory, 
+                            diversity_level: DiversityLevel) -> bool:
+        """
+        Detect if a column is likely an index/identifier column.
+        
+        Args:
+            series: Pandas Series to analyze
+            type_category: Already detected type category
+            diversity_level: Already detected diversity level
+            
+        Returns:
+            True if the column is likely an index/identifier
+        """
+        # Only consider fully unique columns as potential indices
+        if diversity_level != DiversityLevel.FULLY_UNIQUE:
+            return False
+        
+        # Skip continuous numeric columns (likely measurements, not indices)
+        # Integer columns can still be indices (ID fields)
+        if type_category == TypeCategory.NUMERIC:
+            # Check if it's likely a continuous variable (floats) vs discrete IDs (integers)
+            non_null = series.dropna()
+            if len(non_null) == 0:
+                return False
+            
+            # If all values are floats (not whole numbers), likely continuous
+            if non_null.dtype in ['float32', 'float64']:
+                # Check if values are actually whole numbers stored as floats
+                try:
+                    is_whole_numbers = (non_null % 1 == 0).all()
+                    if not is_whole_numbers:
+                        return False  # Continuous float values, not an index
+                except:
+                    return False
+        
+        # These types are good candidates for indices
+        if type_category in [TypeCategory.TEXTUAL, TypeCategory.CATEGORICAL]:
+            return True
+        
+        # Integer columns (including those stored as floats but are whole numbers)
+        if type_category == TypeCategory.NUMERIC:
+            return True
+        
+        # Temporal columns can be indices (timestamps)
+        if type_category == TypeCategory.TEMPORAL:
+            return True
+        
+        # Boolean columns with full uniqueness are unusual but possible
+        if type_category == TypeCategory.BOOLEAN:
+            return True
+        
+        return False
 
     # ----------------- Compatibility private-method aliases -----------------
     def _detect_column_type(self, series: pd.Series) -> TypeCategory:

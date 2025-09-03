@@ -170,10 +170,20 @@ class TestMetaRuleDetector:
         """Test detecting high diversity level."""
         detector = MetaRuleDetector()
         
-        # Test high diversity series (may be detected as distinctive if all unique)
-        high_diversity_series = pd.Series(range(50))
+        # Test high diversity series (unique ratio between 0.5 and 0.9)
+        # 7 unique values out of 10 total = 70% unique ratio  
+        high_diversity_series = pd.Series([1, 2, 3, 4, 5, 6, 7, 1, 2, 3])
         result = detector.detect_diversity_level(high_diversity_series)
-        assert result in [DiversityLevel.HIGH, DiversityLevel.DISTINCTIVE]
+        assert result == DiversityLevel.HIGH
+        
+    def test_detect_diversity_level_fully_unique(self):
+        """Test detecting fully unique diversity level."""
+        detector = MetaRuleDetector()
+        
+        # Test fully unique series (all values unique)
+        fully_unique_series = pd.Series(range(50))
+        result = detector.detect_diversity_level(fully_unique_series)
+        assert result == DiversityLevel.FULLY_UNIQUE
     
     def test_detect_nullability_level_empty(self):
         """Test detecting empty nullability level."""

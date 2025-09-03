@@ -46,6 +46,9 @@ class RuleCategory(Enum):
     TEXT_PATTERNS = "text_patterns"
     CROSS_COLUMN = "cross_column"
     DATE_VALIDATION = "date_validation"
+    PRIVACY_SECURITY = "privacy_security"
+    ADVANCED_CROSS_COLUMN = "advanced_cross_column"
+    PERFORMANCE = "performance"
     OTHER = "other"
 
 
@@ -136,6 +139,9 @@ class RuleEngine:
         self._add_textual_rules()
         self._add_temporal_rules()
         self._add_cross_column_rules()
+        self._add_privacy_rules()
+        self._add_advanced_cross_column_rules()
+        self._add_performance_rules()
     
     def _add_basic_stats_rules(self):
         """Add basic statistics rules."""
@@ -146,7 +152,7 @@ class RuleEngine:
                 description="Count the number of unique values in a column",
                 category="basic_stats",
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_unique_count(series: pd.Series) -> Dict[str, Any]:
@@ -169,7 +175,7 @@ def check_unique_count(series: pd.Series) -> Dict[str, Any]:
                 description="Find the most common value and its frequency",
                 category="basic_stats",
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_most_common_value(series: pd.Series) -> Dict[str, Any]:
@@ -203,7 +209,7 @@ def check_most_common_value(series: pd.Series) -> Dict[str, Any]:
                 description="Analyze null values in the column",
                 category="basic_stats",
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_null_analysis(series: pd.Series) -> Dict[str, Any]:
@@ -239,7 +245,7 @@ def check_null_analysis(series: pd.Series) -> Dict[str, Any]:
                 description="Top-k most common values, frequencies, and 'other' proportion",
                 category="basic_stats",
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_top_k_frequencies(series: pd.Series) -> Dict[str, Any]:
@@ -268,7 +274,7 @@ def check_top_k_frequencies(series: pd.Series) -> Dict[str, Any]:
                 description="Counts and proportion of duplicate values (beyond first occurrences)",
                 category="basic_stats",
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_duplicate_value_analysis(series: pd.Series) -> Dict[str, Any]:
@@ -291,7 +297,7 @@ def check_duplicate_value_analysis(series: pd.Series) -> Dict[str, Any]:
                 description="Percentage of values parseable as integer, float, datetime, JSON",
                 category="basic_stats",
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_parseability_analysis(series: pd.Series) -> Dict[str, Any]:
@@ -330,7 +336,7 @@ def check_parseability_analysis(series: pd.Series) -> Dict[str, Any]:
                 description="Share of repeated values and entropy-based diversity",
                 category="basic_stats",
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_stability_entropy(series: pd.Series) -> Dict[str, Any]:
@@ -368,7 +374,7 @@ def check_stability_entropy(series: pd.Series) -> Dict[str, Any]:
                 description="Calculate basic numeric statistics",
                 category="numeric_stats",
                 column_types=["numeric"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_numeric_stats(series: pd.Series) -> Dict[str, Any]:
@@ -538,7 +544,7 @@ def check_modality_estimation(series: pd.Series) -> Dict[str, Any]:
                 description="Analyze string lengths in textual columns",
                 category="length_analysis",
                 column_types=["textual"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_length_analysis(series: pd.Series) -> Dict[str, Any]:
@@ -566,7 +572,7 @@ def check_length_analysis(series: pd.Series) -> Dict[str, Any]:
                 description="Leading/trailing spaces, whitespace-only, non-printable characters",
                 category="text_quality",
                 column_types=["textual"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_whitespace_encoding_checks(series: pd.Series) -> Dict[str, Any]:
@@ -643,7 +649,7 @@ def check_text_patterns(series: pd.Series) -> Dict[str, Any]:
                 description="Validate date formats and ranges",
                 category="date_validation",
                 column_types=["temporal"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_date_validation(series: pd.Series) -> Dict[str, Any]:
@@ -699,7 +705,7 @@ def check_date_validation(series: pd.Series) -> Dict[str, Any]:
                 description="Check for identical columns",
                 category="cross_column",
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
                 code_template="""
@@ -784,7 +790,7 @@ def check_correlation(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
                 description="When nulls in one column coincide with nulls in another",
                 category="cross_column",
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
                 code_template="""
@@ -920,6 +926,339 @@ def check_categorical_association_cramers_v(df: pd.DataFrame, col1: str, col2: s
         for rule in rules:
             self._register_rule(rule, builtin=True)
     
+    def _add_privacy_rules(self):
+        """Add privacy and security-focused rules."""
+        rules = [
+            Rule(
+                id="pii_pattern_detection",
+                name="PII Pattern Detection",
+                description="Count occurrences of common PII patterns in textual columns",
+                category="privacy_security",
+                column_types=["textual"],
+                diversity_levels=["medium", "high", "distinctive", "fully_unique"],
+                nullability_levels=["empty", "low", "medium", "high"],
+                code_template="""
+def check_pii_pattern_detection(series: pd.Series) -> Dict[str, Any]:
+    s = series.astype(str).dropna()
+    if len(s) == 0:
+        return {"status": "warning", "message": "No data", "pattern_counts": {}}
+    
+    pii_patterns = {
+        'email_pattern': r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+        'phone_pattern': r'^\+?[\d\s\-\(\)]{10,}$',
+        'ssn_pattern': r'^\d{3}-?\d{2}-?\d{4}$',
+        'credit_card_pattern': r'^\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}$',
+        'ip_address_pattern': r'^(?:\d{1,3}\.){3}\d{1,3}$'
+    }
+    
+    pattern_counts = {}
+    total_count = len(s)
+    
+    for pattern_name, pattern in pii_patterns.items():
+        matches = s.str.match(pattern, na=False).sum()
+        pattern_counts[pattern_name] = {
+            "count": int(matches),
+            "ratio": float(matches / total_count) if total_count > 0 else 0.0
+        }
+    
+    total_pii_matches = sum(p["count"] for p in pattern_counts.values())
+    
+    return {
+        "pattern_counts": pattern_counts,
+        "total_pii_matches": total_pii_matches,
+        "total_rows": total_count,
+        "pii_ratio": float(total_pii_matches / total_count) if total_count > 0 else 0.0,
+        "status": "passed",
+        "message": f"Found {total_pii_matches} PII pattern matches in {total_count} values"
+    }
+"""
+            ),
+            
+            Rule(
+                id="data_format_patterns",
+                name="Data Format Patterns",
+                description="Identify common data format patterns in textual columns",
+                category="privacy_security",
+                column_types=["textual"],
+                diversity_levels=["high", "distinctive", "fully_unique"],
+                nullability_levels=["empty", "low", "medium"],
+                code_template="""
+def check_data_format_patterns(series: pd.Series) -> Dict[str, Any]:
+    s = series.astype(str).dropna()
+    if len(s) == 0:
+        return {"status": "warning", "message": "No data"}
+    
+    # Simple format pattern detection
+    format_patterns = {
+        'masked_asterisk': r'\*{3,}',
+        'masked_x': r'[xX]{3,}',
+        'hex_string': r'^[0-9a-fA-F]{8,}$',
+        'base64_like': r'^[A-Za-z0-9+/]{20,}=*$',
+        'all_caps': r'^[A-Z][A-Z0-9_]*$',
+        'camel_case': r'^[a-z][a-zA-Z0-9]*$',
+        'snake_case': r'^[a-z][a-z0-9_]*$'
+    }
+    
+    format_counts = {}
+    total_count = len(s)
+    
+    for pattern_name, pattern in format_patterns.items():
+        matches = s.str.match(pattern, na=False).sum()
+        format_counts[pattern_name] = {
+            "count": int(matches),
+            "ratio": float(matches / total_count) if total_count > 0 else 0.0
+        }
+    
+    # Find the most common format
+    dominant_format = max(format_counts.keys(), 
+                         key=lambda k: format_counts[k]["ratio"])
+    dominant_ratio = format_counts[dominant_format]["ratio"]
+    
+    return {
+        "format_counts": format_counts,
+        "dominant_format": dominant_format,
+        "dominant_format_ratio": dominant_ratio,
+        "total_rows": total_count,
+        "status": "passed",
+        "message": f"Dominant format: {dominant_format} ({dominant_ratio:.1%} of values)"
+    }
+"""
+            )
+        ]
+        
+        for rule in rules:
+            self._register_rule(rule, builtin=True)
+    
+    def _add_advanced_cross_column_rules(self):
+        """Add advanced cross-column analysis rules."""
+        rules = [
+            Rule(
+                id="column_name_similarity",
+                name="Column Name Similarity",
+                description="Calculate similarity between column names to identify relationships",
+                category="advanced_cross_column",
+                column_types=["numeric", "textual", "temporal", "categorical"],
+                diversity_levels=["low", "medium", "high", "distinctive", "fully_unique"],
+                nullability_levels=["empty", "low", "medium", "high"],
+                requires_cross_column=True,
+                code_template="""
+def check_column_name_similarity(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
+    import difflib
+    
+    # Calculate name similarity
+    name_similarity = difflib.SequenceMatcher(None, col1.lower(), col2.lower()).ratio()
+    
+    # Check for common prefixes/suffixes
+    col1_lower = col1.lower()
+    col2_lower = col2.lower()
+    
+    common_prefix_len = 0
+    for i, (c1, c2) in enumerate(zip(col1_lower, col2_lower)):
+        if c1 == c2:
+            common_prefix_len = i + 1
+        else:
+            break
+    
+    common_suffix_len = 0
+    for i, (c1, c2) in enumerate(zip(reversed(col1_lower), reversed(col2_lower))):
+        if c1 == c2:
+            common_suffix_len = i + 1
+        else:
+            break
+    
+    # Check for semantic relationships
+    relationship_indicators = {
+        'start_end': ('start' in col1_lower and 'end' in col2_lower) or 
+                    ('end' in col1_lower and 'start' in col2_lower),
+        'min_max': ('min' in col1_lower and 'max' in col2_lower) or 
+                  ('max' in col1_lower and 'min' in col2_lower),
+        'first_last': ('first' in col1_lower and 'last' in col2_lower) or 
+                     ('last' in col1_lower and 'first' in col2_lower)
+    }
+    
+    semantic_relationship = None
+    for rel_type, has_relationship in relationship_indicators.items():
+        if has_relationship:
+            semantic_relationship = rel_type
+            break
+    
+    return {
+        "name_similarity": float(name_similarity),
+        "common_prefix_length": common_prefix_len,
+        "common_suffix_length": common_suffix_len,
+        "semantic_relationship": semantic_relationship,
+        "col1_name": col1,
+        "col2_name": col2,
+        "status": "passed",
+        "message": f"Name similarity: {name_similarity:.2f}, semantic: {semantic_relationship or 'none'}"
+    }
+"""
+            ),
+            
+            Rule(
+                id="value_overlap_analysis",
+                name="Value Overlap Analysis", 
+                description="Analyze overlap of values between two columns",
+                category="advanced_cross_column",
+                column_types=["textual", "categorical", "numeric"],
+                diversity_levels=["low", "medium", "high", "distinctive"],
+                nullability_levels=["empty", "low", "medium"],
+                requires_cross_column=True,
+                code_template="""
+def check_value_overlap_analysis(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
+    s1 = df[col1].dropna()
+    s2 = df[col2].dropna()
+    
+    if len(s1) == 0 or len(s2) == 0:
+        return {"status": "warning", "message": "No data in one or both columns"}
+    
+    # Convert to sets for overlap analysis
+    set1 = set(s1.astype(str).unique())
+    set2 = set(s2.astype(str).unique())
+    
+    # Calculate overlap statistics
+    intersection = set1.intersection(set2)
+    union = set1.union(set2)
+    
+    overlap_count = len(intersection)
+    jaccard_similarity = len(intersection) / len(union) if len(union) > 0 else 0
+    
+    # Overlap ratios for each column
+    col1_overlap_ratio = overlap_count / len(set1) if len(set1) > 0 else 0
+    col2_overlap_ratio = overlap_count / len(set2) if len(set2) > 0 else 0
+    
+    return {
+        "col1_unique_values": len(set1),
+        "col2_unique_values": len(set2),
+        "overlapping_values": overlap_count,
+        "jaccard_similarity": float(jaccard_similarity),
+        "col1_overlap_ratio": float(col1_overlap_ratio),
+        "col2_overlap_ratio": float(col2_overlap_ratio),
+        "total_unique_values": len(union),
+        "status": "passed",
+        "message": f"Overlap: {overlap_count} values, Jaccard: {jaccard_similarity:.3f}"
+    }
+"""
+            )
+        ]
+        
+        for rule in rules:
+            self._register_rule(rule, builtin=True)
+    
+    def _add_performance_rules(self):
+        """Add performance and efficiency-focused rules."""
+        rules = [
+            Rule(
+                id="memory_usage_analysis",
+                name="Memory Usage Analysis",
+                description="Analyze memory usage and suggest potential optimizations",
+                category="performance",
+                column_types=["numeric", "textual", "categorical"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
+                nullability_levels=["empty", "low", "medium", "high", "full"],
+                code_template="""
+def check_memory_usage_analysis(series: pd.Series) -> Dict[str, Any]:
+    current_dtype = str(series.dtype)
+    memory_usage = series.memory_usage(deep=True)
+    
+    # Calculate memory per value
+    total_count = len(series)
+    memory_per_value = memory_usage / total_count if total_count > 0 else 0
+    
+    # Suggest optimizations for numeric data
+    optimization_potential = None
+    if pd.api.types.is_numeric_dtype(series) and not series.empty:
+        if pd.api.types.is_integer_dtype(series):
+            min_val = series.min()
+            max_val = series.max()
+            
+            # Check if smaller integer types would work
+            if -128 <= min_val <= 127 and -128 <= max_val <= 127:
+                optimization_potential = "int8"
+            elif -32768 <= min_val <= 32767 and -32768 <= max_val <= 32767:
+                optimization_potential = "int16"
+            elif -2147483648 <= min_val <= 2147483647:
+                optimization_potential = "int32"
+    
+    # For object/string columns, check categorical potential
+    categorical_potential = False
+    if pd.api.types.is_object_dtype(series):
+        unique_count = series.nunique()
+        if unique_count < total_count * 0.5:  # Less than 50% unique
+            categorical_potential = True
+    
+    return {
+        "current_dtype": current_dtype,
+        "memory_usage_bytes": int(memory_usage),
+        "memory_usage_mb": float(memory_usage / (1024 * 1024)),
+        "memory_per_value_bytes": float(memory_per_value),
+        "total_values": total_count,
+        "optimization_potential": optimization_potential,
+        "categorical_potential": categorical_potential,
+        "status": "passed",
+        "message": f"Memory: {memory_usage/1024:.1f} KB ({memory_per_value:.1f} bytes/value)"
+    }
+"""
+            ),
+            
+            Rule(
+                id="cardinality_analysis",
+                name="Cardinality Analysis",
+                description="Analyze cardinality characteristics for indexing and storage decisions",
+                category="performance",
+                column_types=["numeric", "textual", "categorical"],
+                diversity_levels=["low", "medium", "high", "distinctive", "fully_unique"],
+                nullability_levels=["empty", "low", "medium", "high", "full"],
+                code_template="""
+def check_cardinality_analysis(series: pd.Series) -> Dict[str, Any]:
+    total_count = len(series)
+    unique_count = series.nunique()
+    null_count = series.isnull().sum()
+    non_null_count = total_count - null_count
+    
+    # Calculate cardinality metrics
+    cardinality_ratio = unique_count / non_null_count if non_null_count > 0 else 0
+    
+    # Classify cardinality level
+    if cardinality_ratio == 1.0:
+        cardinality_level = "unique"
+    elif cardinality_ratio >= 0.9:
+        cardinality_level = "very_high"
+    elif cardinality_ratio >= 0.5:
+        cardinality_level = "high"
+    elif cardinality_ratio >= 0.1:
+        cardinality_level = "medium"
+    else:
+        cardinality_level = "low"
+    
+    # Index suitability analysis
+    index_suitability = "high" if cardinality_ratio >= 0.8 else (
+        "medium" if cardinality_ratio >= 0.3 else "low"
+    )
+    
+    # Compression potential (inverse of cardinality)
+    compression_potential = "high" if cardinality_ratio < 0.1 else (
+        "medium" if cardinality_ratio < 0.5 else "low"
+    )
+    
+    return {
+        "total_count": total_count,
+        "unique_count": unique_count,
+        "null_count": null_count,
+        "cardinality_ratio": float(cardinality_ratio),
+        "cardinality_level": cardinality_level,
+        "index_suitability": index_suitability,
+        "compression_potential": compression_potential,
+        "status": "passed",
+        "message": f"Cardinality: {unique_count}/{total_count} ({cardinality_ratio:.1%}), level: {cardinality_level}"
+    }
+"""
+            )
+        ]
+        
+        for rule in rules:
+            self._register_rule(rule, builtin=True)
+    
     def get_relevant_rules(self, attributes: ColumnAttributes, enable_cross_column: bool = True) -> List[Rule]:
         """
         Get rules that are relevant for a column based on its attributes.
@@ -950,9 +1289,69 @@ def check_categorical_association_cramers_v(df: pd.DataFrame, col1: str, col2: s
             if rule.requires_cross_column and not enable_cross_column:
                 continue
             
+            # Skip unnecessary rules for likely index columns
+            if self._should_skip_rule_for_index(rule, attributes):
+                continue
+            
             relevant_rules.append(rule)
         
         return relevant_rules
+    
+    def _should_skip_rule_for_index(self, rule: Rule, attributes: ColumnAttributes) -> bool:
+        """
+        Determine if a rule should be skipped for likely index columns.
+        
+        Args:
+            rule: Rule to check
+            attributes: Column attributes
+            
+        Returns:
+            True if the rule should be skipped for this index column
+        """
+        # Only skip rules for likely index columns
+        if not attributes.is_likely_index:
+            return False
+        
+        # Rules that are typically irrelevant for index columns
+        irrelevant_for_index = {
+            # Statistical analysis rules
+            "numeric_stats", "outlier_detection", "modality_estimation", 
+            "numeric_histogram_quantiles", "outlier_detection_zscore",
+            
+            # Text pattern analysis (indices are usually not meaningful patterns)
+            "text_patterns", "whitespace_encoding_checks",
+            
+            # Analysis that's not useful for unique identifiers
+            "stability_entropy",  # All values are unique, so entropy is max
+            "duplicate_value_analysis",  # No duplicates by definition
+            
+            # Length analysis might not be relevant for IDs (though could be kept)
+            "length_analysis"
+        }
+        
+        # Keep basic stats and uniqueness analysis even for indices
+        essential_for_index = {
+            "unique_count", "most_common_value", "null_analysis", 
+            "top_k_frequencies", "parseability_analysis",
+            # Privacy rules are important for index columns (PII detection)
+            "pii_pattern_detection", "data_format_patterns",
+            # Performance rules are useful for index columns
+            "memory_usage_analysis", "cardinality_analysis"
+        }
+        
+        # Skip irrelevant rules
+        if rule.id in irrelevant_for_index:
+            return True
+        
+        # Keep essential rules
+        if rule.id in essential_for_index:
+            return False
+        
+        # For rules not explicitly categorized, use category-based logic
+        if rule.category in ["outlier_detection", "text_quality", "distribution_analysis"]:
+            return True
+        
+        return False
     
     def get_rule(self, rule_id: str) -> Optional[Rule]:
         """Get a rule by ID."""
