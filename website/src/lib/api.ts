@@ -61,6 +61,7 @@ export interface ColumnInsight {
   name: string;
   type: string;
   nullRatio: number;
+  valueType?: 'categorical' | 'continuous';
   topValues?: { value: string; count: number }[];
   numeric?: { min: number; max: number; avg: number };
   temporal?: { min: string; max: string };

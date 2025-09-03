@@ -69,9 +69,16 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
             <TypeIcon className={`w-4 h-4 text-${typeColor}`} />
             <h4 className="font-medium text-foreground">{column.name}</h4>
           </div>
-          <Badge variant="outline" className={`bg-${typeColor}/10 text-${typeColor} border-${typeColor}/30`}>
-            {column.type}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {column.valueType && (
+              <Badge variant="secondary" className="text-xs capitalize">
+                {column.valueType}
+              </Badge>
+            )}
+            <Badge variant="outline" className={`bg-${typeColor}/10 text-${typeColor} border-${typeColor}/30`}>
+              {column.type}
+            </Badge>
+          </div>
         </div>
 
         {/* Null Ratio */}

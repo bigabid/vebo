@@ -84,6 +84,53 @@ def _map_profiler_to_insights(table: str, applied_filters: Dict[str, list], df: 
         # index checks by id for convenience
         checks_by_id = {chk.get("check_id") or chk.get("rule_id"): chk for chk in checks if isinstance(chk, dict)}
 
+        # Classification: categorical vs continuous
+        data_type = str(analysis.get("data_type", "unknown"))
+        unique_ratio = analysis.get("unique_percentage")
+        unique_count = analysis.get("unique_count")
+        value_type = None
+        try:
+            series = df[col_name]
+        except Exception:
+            series = None
+        if data_type in ("categorical", "boolean", "textual"):
+            value_type = "categorical"
+        elif data_type == "numeric":
+            # Treat any float-valued numeric column as continuous
+            is_float = False
+            try:
+                import pandas as _pd  # local alias
+                if series is not None:
+                    if _pd.api.types.is_float_dtype(series):
+                        is_float = True
+                    else:
+                        num = _pd.to_numeric(series, errors='coerce')
+                        non_null = num.dropna()
+                        if len(non_null) > 0:
+                            # Check for any fractional component
+                            has_fractional = ((non_null % 1) != 0).any()
+                            is_float = bool(has_fractional)
+            except Exception:
+                pass
+            if is_float:
+                value_type = "continuous"
+            else:
+                # Heuristic for integer-like numeric columns
+                try:
+                    if isinstance(unique_ratio, (int, float)) and unique_ratio is not None:
+                        value_type = "continuous" if unique_ratio > 0.5 else "categorical"
+                    elif isinstance(unique_count, (int, float)) and isinstance(analysis.get("total_count"), (int, float)):
+                        ur = float(unique_count) / float(analysis.get("total_count") or 1)
+                        value_type = "continuous" if ur > 0.5 else "categorical"
+                    else:
+                        value_type = "continuous"
+                except Exception:
+                    value_type = "continuous"
+        elif data_type == "temporal":
+            value_type = "continuous"
+        if value_type:
+            col_info["valueType"] = value_type
+
         # try to find numeric_stats details
         numeric_stats = None
         ns = checks_by_id.get("numeric_stats") or {}
@@ -114,7 +161,7 @@ def _map_profiler_to_insights(table: str, applied_filters: Dict[str, list], df: 
         if isinstance(uc.get("details"), dict):
             if isinstance(uc["details"].get("unique_count"), (int, float)):
                 basic["uniqueCount"] = uc["details"]["unique_count"]
-            if isinstance(uc["details"].get("total_count"), (int, float)) and isinstance(uc["details"].get("unique_ratio"), (int, float)):
+            if isinstance(uc["details"].get("unique_ratio"), (int, float)):
                 basic["uniqueRatio"] = uc["details"].get("unique_ratio")
 
         dup = checks_by_id.get("duplicate_value_analysis") or {}
