@@ -27,7 +27,7 @@ def create_numeric_dataframe() -> pd.DataFrame:
         'all_nulls': [np.nan] * n_rows,
         'constant': [42] * n_rows,
         'binary': np.random.choice([0, 1], n_rows),
-        'outliers': np.concatenate([np.random.normal(0, 1, 95), [100, -100, 200, -200]])
+        'outliers': np.concatenate([np.random.normal(0, 1, 96), [100, -100, 200, -200]])
     }
     
     return pd.DataFrame(data)

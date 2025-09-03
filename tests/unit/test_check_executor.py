@@ -300,7 +300,8 @@ class TestCheckExecutor:
         
         column_pair = ('age', 'salary')
         
-        result = executor.execute_cross_column_check(rule, df, column_pair, attributes)
+        # Updated API takes explicit columns not tuple; keep same call signature
+        result = executor.execute_cross_column_check(rule, df, *column_pair)
         
         assert isinstance(result, RuleResult)
         assert result.rule_id == "correlation_check"

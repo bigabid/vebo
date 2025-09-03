@@ -17,6 +17,7 @@ from vebo_profiler.core.rule_engine import (
     RuleEngine, Rule, RuleResult, RuleStatus, 
     RuleCategory, RulePriority, RuleComplexity
 )
+import json
 from vebo_profiler.core.meta_rules import (
     ColumnAttributes, TypeCategory, DiversityLevel, NullabilityLevel
 )
@@ -168,7 +169,7 @@ class TestRuleEngine:
     
     def test_rule_engine_initialization(self):
         """Test RuleEngine initialization."""
-        engine = RuleEngine()
+        engine = RuleEngine(load_builtin=False)
         
         assert engine.rules == {}
         assert engine.rule_categories == {}
@@ -178,7 +179,7 @@ class TestRuleEngine:
     
     def test_add_rule(self):
         """Test adding a rule to the engine."""
-        engine = RuleEngine()
+        engine = RuleEngine(load_builtin=False)
         
         rule = Rule(
             id="test_rule",
@@ -200,7 +201,7 @@ class TestRuleEngine:
     
     def test_remove_rule(self):
         """Test removing a rule from the engine."""
-        engine = RuleEngine()
+        engine = RuleEngine(load_builtin=False)
         
         rule = Rule(
             id="test_rule",
@@ -222,7 +223,7 @@ class TestRuleEngine:
     
     def test_get_rule(self):
         """Test getting a rule by ID."""
-        engine = RuleEngine()
+        engine = RuleEngine(load_builtin=False)
         
         rule = Rule(
             id="test_rule",
@@ -245,7 +246,7 @@ class TestRuleEngine:
     
     def test_list_rules(self):
         """Test listing all rules."""
-        engine = RuleEngine()
+        engine = RuleEngine(load_builtin=False)
         
         rule1 = Rule(
             id="rule1",
@@ -279,7 +280,7 @@ class TestRuleEngine:
     
     def test_get_rules_by_category(self):
         """Test getting rules by category."""
-        engine = RuleEngine()
+        engine = RuleEngine(load_builtin=False)
         
         rule1 = Rule(
             id="rule1",
@@ -319,7 +320,7 @@ class TestRuleEngine:
     
     def test_get_relevant_rules(self):
         """Test getting relevant rules for column attributes."""
-        engine = RuleEngine()
+        engine = RuleEngine(load_builtin=False)
         
         # Add rules for different scenarios
         numeric_rule = Rule(
@@ -397,7 +398,7 @@ class TestRuleEngine:
     
     def test_get_rule_dependencies(self):
         """Test getting rule dependencies."""
-        engine = RuleEngine()
+        engine = RuleEngine(load_builtin=False)
         
         rule1 = Rule(
             id="rule1",
