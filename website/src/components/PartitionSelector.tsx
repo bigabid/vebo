@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Layers, CheckSquare, Square, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { SearchableMultiSelect } from '@/components/ui/searchable-select';
 import { usePartitions } from '@/hooks/useAthenaApi';
 
 interface PartitionSelectorProps {
@@ -148,23 +148,17 @@ export function PartitionSelector({
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                  {values.map((value) => (
-                    <label
-                      key={value}
-                      className="flex items-center gap-2 p-2 rounded-lg bg-background border border-border hover:border-primary/30 cursor-pointer transition-colors"
-                    >
-                      <Checkbox
-                        checked={selectedValues.includes(value)}
-                        onCheckedChange={(checked) => 
-                          handlePartitionToggle(key, value, checked === true)
-                        }
-                        className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                      />
-                      <span className="text-sm text-foreground truncate flex-1">{value}</span>
-                    </label>
-                  ))}
-                </div>
+                <SearchableMultiSelect
+                  values={selectedValues}
+                  onChange={(vals) => {
+                    onPartitionChange({
+                      ...selectedPartitions,
+                      [key]: vals,
+                    })
+                  }}
+                  options={values}
+                  placeholder={values.length ? `Select ${key}` : `No ${key} values`}
+                />
               </div>
             );
           })}

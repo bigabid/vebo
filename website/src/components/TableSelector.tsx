@@ -1,11 +1,5 @@
 import { Database, Loader2 } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTables } from '@/hooks/useAthenaApi';
 import { Card } from '@/components/ui/card';
 
@@ -44,34 +38,13 @@ export function TableSelector({ dataSource, catalog, database, selectedTable, on
           <p className="text-xs text-destructive/80 mt-1">Please check your connection and try again</p>
         </div>
       ) : (
-        <Select value={selectedTable || ''} onValueChange={onTableSelect} disabled={isLoading}>
-          <SelectTrigger className="w-full h-12 bg-background border-2 border-border hover:border-primary/50 transition-colors">
-            <SelectValue placeholder={
-              isLoading ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                  <span>Loading tables...</span>
-                </div>
-              ) : (
-                "Select a table to analyze"
-              )
-            } />
-          </SelectTrigger>
-          <SelectContent className="bg-card border-2 border-border shadow-medium">
-            {data?.tables.map((table) => (
-              <SelectItem 
-                key={table.name} 
-                value={table.name}
-                className="hover:bg-accent cursor-pointer py-3 px-4"
-              >
-                <div className="flex items-center gap-3">
-                  <Database className="w-4 h-4 text-primary" />
-                  <span className="font-medium">{table.name}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={selectedTable}
+          onChange={onTableSelect}
+          options={(data?.tables || []).map(t => ({ label: t.name, value: t.name }))}
+          placeholder={isLoading ? 'Loading tables...' : 'Select a table to analyze'}
+          loading={isLoading}
+        />
       )}
     </Card>
   );

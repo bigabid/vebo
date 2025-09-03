@@ -1,12 +1,6 @@
 import { Book, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useCatalogs } from '@/hooks/useAthenaApi';
 
 interface CatalogSelectorProps {
@@ -37,29 +31,13 @@ export function CatalogSelector({ dataSource, selectedCatalog, onChange }: Catal
           <p className="text-sm text-destructive font-medium">Failed to load catalogs</p>
         </div>
       ) : (
-        <Select value={selectedCatalog || ''} onValueChange={onChange} disabled={isLoading}>
-          <SelectTrigger className="w-full h-12 bg-background border-2 border-border hover:border-primary/50 transition-colors">
-            <SelectValue
-              placeholder={
-                isLoading ? (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                    <span>Loading catalogs...</span>
-                  </div>
-                ) : (
-                  'Select a catalog'
-                )
-              }
-            />
-          </SelectTrigger>
-          <SelectContent className="bg-card border-2 border-border shadow-medium">
-            {data?.catalogs.map((name) => (
-              <SelectItem key={name} value={name} className="hover:bg-accent cursor-pointer py-3 px-4">
-                {name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={selectedCatalog}
+          onChange={onChange}
+          options={data?.catalogs || []}
+          placeholder={isLoading ? 'Loading catalogs...' : 'Select a catalog'}
+          loading={isLoading}
+        />
       )}
     </Card>
   );

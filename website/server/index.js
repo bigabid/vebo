@@ -115,19 +115,54 @@ app.post('/api/execute', async (req, res) => {
       return res.status(500).json({ error: 'ATHENA_OUTPUT_S3 env var is required (e.g., s3://my-bucket/athena-results/)' });
     }
 
-    // Build WHERE clause from partitions: { key: [v1,v2] }
+    // Discover partition key types to properly type literals in WHERE clause
+    const tableResp = await glue.send(new GetTableCommand({
+      DatabaseName: String(database),
+      Name: String(table),
+    }));
+    const partitionKeyTypeByName = {};
+    for (const k of (tableResp.Table?.PartitionKeys || [])) {
+      if (k?.Name) {
+        partitionKeyTypeByName[k.Name] = String(k.Type || '').toLowerCase();
+      }
+    }
+
+    const escapeSingle = (s) => String(s).replace(/'/g, "''");
+    const formatLiteral = (val, type) => {
+      const t = (type || '').toLowerCase();
+      if (t === 'date') {
+        return `DATE '${escapeSingle(val)}'`;
+      }
+      if (t === 'timestamp') {
+        return `TIMESTAMP '${escapeSingle(val)}'`;
+      }
+      if (
+        t === 'int' || t === 'integer' || t === 'bigint' || t === 'smallint' || t === 'tinyint' ||
+        t === 'float' || t === 'real' || t === 'double' || t.startsWith('decimal')
+      ) {
+        const num = Number(val);
+        if (Number.isFinite(num)) return String(num);
+        // Fallback: cast string to the target numeric type
+        return `CAST('${escapeSingle(val)}' AS ${t || 'DOUBLE'})`;
+      }
+      // default to string/varchar family
+      return `'${escapeSingle(val)}'`;
+    };
+
+    // Build WHERE clause from partitions: { key: [v1,v2] } with proper typing
     const whereClauses = [];
     if (partitions && typeof partitions === 'object') {
       for (const [key, values] of Object.entries(partitions)) {
         if (Array.isArray(values) && values.length > 0) {
-          const quotedVals = values.map(v => `'${String(v).replace(/'/g, "''")}'`).join(', ');
-          whereClauses.push(`"${key}" IN (${quotedVals})`);
+          const keyType = partitionKeyTypeByName[key] || 'string';
+          const typedVals = values.map(v => formatLiteral(v, keyType)).join(', ');
+          whereClauses.push(`"${key}" IN (${typedVals})`);
         }
       }
     }
 
     const whereSql = whereClauses.length ? ` WHERE ${whereClauses.join(' AND ')}` : '';
-    const queryString = `SELECT * FROM "${database}"."${table}"${whereSql} LIMIT 100000`;
+    const queryString = `SELECT * FROM "${database}"."${table}"${whereSql} LIMIT 10000`;
 
     const params = {
       QueryString: queryString,

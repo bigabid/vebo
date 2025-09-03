@@ -103,13 +103,15 @@ function AthenaExplorer() {
               onTableSelect={handleTableSelect}
             />
             
-            <PartitionSelector
-              catalog={selectedCatalog}
-              database={selectedDatabase}
-              selectedTable={selectedTable}
-              selectedPartitions={selectedPartitions}
-              onPartitionChange={setSelectedPartitions}
-            />
+            {false && (
+              <PartitionSelector
+                catalog={selectedCatalog}
+                database={selectedDatabase}
+                selectedTable={selectedTable}
+                selectedPartitions={selectedPartitions}
+                onPartitionChange={setSelectedPartitions}
+              />
+            )}
             
             <ExecuteButton
               dataSource={selectedDataSource}

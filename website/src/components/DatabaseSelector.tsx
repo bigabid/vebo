@@ -1,12 +1,6 @@
 import { Database as DbIcon, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useDatabases } from '@/hooks/useAthenaApi';
 
 interface DatabaseSelectorProps {
@@ -38,29 +32,13 @@ export function DatabaseSelector({ dataSource, catalog, selectedDatabase, onChan
           <p className="text-sm text-destructive font-medium">Failed to load databases</p>
         </div>
       ) : (
-        <Select value={selectedDatabase || ''} onValueChange={onChange} disabled={isLoading}>
-          <SelectTrigger className="w-full h-12 bg-background border-2 border-border hover:border-primary/50 transition-colors">
-            <SelectValue
-              placeholder={
-                isLoading ? (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                    <span>Loading databases...</span>
-                  </div>
-                ) : (
-                  'Select a database'
-                )
-              }
-            />
-          </SelectTrigger>
-          <SelectContent className="bg-card border-2 border-border shadow-medium">
-            {data?.databases.map((name) => (
-              <SelectItem key={name} value={name} className="hover:bg-accent cursor-pointer py-3 px-4">
-                {name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={selectedDatabase}
+          onChange={onChange}
+          options={data?.databases || []}
+          placeholder={isLoading ? 'Loading databases...' : 'Select a database'}
+          loading={isLoading}
+        />
       )}
     </Card>
   );

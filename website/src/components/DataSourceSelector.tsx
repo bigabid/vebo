@@ -1,12 +1,6 @@
 import { Server, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useDataSources } from '@/hooks/useAthenaApi';
 
 interface DataSourceSelectorProps {
@@ -34,29 +28,13 @@ export function DataSourceSelector({ selectedDataSource, onChange }: DataSourceS
           <p className="text-sm text-destructive font-medium">Failed to load data sources</p>
         </div>
       ) : (
-        <Select value={selectedDataSource || ''} onValueChange={onChange} disabled={isLoading}>
-          <SelectTrigger className="w-full h-12 bg-background border-2 border-border hover:border-primary/50 transition-colors">
-            <SelectValue
-              placeholder={
-                isLoading ? (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                    <span>Loading data sources...</span>
-                  </div>
-                ) : (
-                  'Select a data source'
-                )
-              }
-            />
-          </SelectTrigger>
-          <SelectContent className="bg-card border-2 border-border shadow-medium">
-            {data?.dataSources.map((name) => (
-              <SelectItem key={name} value={name} className="hover:bg-accent cursor-pointer py-3 px-4">
-                {name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={selectedDataSource}
+          onChange={onChange}
+          options={data?.dataSources || []}
+          placeholder={isLoading ? 'Loading data sources...' : 'Select a data source'}
+          loading={isLoading}
+        />
       )}
     </Card>
   );
