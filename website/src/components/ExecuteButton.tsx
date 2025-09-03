@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Play, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Play, Loader2, CheckCircle, AlertCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { LogDisplay } from '@/components/LogDisplay';
-import { useStartInsights, useJobStatus } from '@/hooks/useAthenaApi';
+import { useStartInsights, useJobStatus, useCancelJob } from '@/hooks/useAthenaApi';
 import { useToast } from '@/hooks/use-toast';
 
 export interface ExecuteButtonComponentProps {
@@ -28,6 +28,7 @@ export function ExecuteButton({
   const { toast } = useToast();
   
   const startInsightsMutation = useStartInsights();
+  const cancelJobMutation = useCancelJob();
   const jobStatusQuery = useJobStatus(currentJobId, !!currentJobId);
 
   const handleExecute = async () => {
@@ -60,6 +61,7 @@ export function ExecuteButton({
   const isRunning = jobStatusQuery.data?.status === 'running';
   const isComplete = jobStatusQuery.data?.status === 'complete';
   const isError = jobStatusQuery.data?.status === 'error';
+  const isCancelled = jobStatusQuery.data?.status === 'cancelled';
   const progress = jobStatusQuery.data?.progress || 0;
 
   // Handle completion
@@ -80,7 +82,36 @@ export function ExecuteButton({
     setCurrentJobId(null);
   }
 
+  // Handle cancellation
+  if (isCancelled && currentJobId) {
+    toast({
+      title: "Analysis Cancelled",
+      description: "The analysis was cancelled by the user",
+      variant: "default",
+    });
+    setCurrentJobId(null);
+  }
+
+  const handleCancel = async () => {
+    if (!currentJobId) return;
+    
+    try {
+      await cancelJobMutation.mutateAsync(currentJobId);
+      toast({
+        title: "Cancellation Requested",
+        description: "The analysis is being cancelled...",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to cancel",
+        description: "Could not cancel the analysis",
+        variant: "destructive",
+      });
+    }
+  };
+
   const canExecute = !!dataSource && !!catalog && !!database && !!selectedTable && !isRunning && !startInsightsMutation.isPending;
+  const canCancel = isRunning && currentJobId && !cancelJobMutation.isPending;
   const selectedCount = Object.values(selectedPartitions).flat().length;
 
   return (
@@ -121,24 +152,38 @@ export function ExecuteButton({
           />
         )}
 
-        <Button
-          onClick={handleExecute}
-          disabled={!canExecute}
-          size="lg"
-          className="w-full h-12 bg-gradient-primary hover:opacity-90 border-0 shadow-medium hover:shadow-glow transition-all"
-        >
-          {(isRunning || startInsightsMutation.isPending) ? (
-            <>
-              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-              {startInsightsMutation.isPending ? 'Starting...' : 'Running Analysis...'}
-            </>
-          ) : (
-            <>
-              <Play className="w-5 h-5 mr-2" />
-              Execute Insights
-            </>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleExecute}
+            disabled={!canExecute}
+            size="lg"
+            className="flex-1 h-12 bg-gradient-primary hover:opacity-90 border-0 shadow-medium hover:shadow-glow transition-all"
+          >
+            {(isRunning || startInsightsMutation.isPending) ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                {startInsightsMutation.isPending ? 'Starting...' : 'Running Analysis...'}
+              </>
+            ) : (
+              <>
+                <Play className="w-5 h-5 mr-2" />
+                Execute Insights
+              </>
+            )}
+          </Button>
+          
+          {canCancel && (
+            <Button
+              onClick={handleCancel}
+              disabled={!canCancel}
+              size="lg"
+              variant="outline"
+              className="h-12 px-4 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all"
+            >
+              <X className="w-5 h-5" />
+            </Button>
           )}
-        </Button>
+        </div>
 
         {selectedTable && (
           <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-lg">

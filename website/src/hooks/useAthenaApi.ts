@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchDataSources, fetchCatalogs, fetchDatabases, fetchTables, fetchPartitions, startInsightsJob, getJobStatus } from '@/lib/api';
+import { fetchDataSources, fetchCatalogs, fetchDatabases, fetchTables, fetchPartitions, startInsightsJob, getJobStatus, cancelJob } from '@/lib/api';
 import { useEffect } from 'react';
 
 export const useDataSources = () => {
@@ -67,8 +67,8 @@ export const useJobStatus = (jobId: string | null, enabled: boolean = true) => {
     queryFn: () => getJobStatus(jobId!),
     enabled: !!jobId && enabled,
     refetchInterval: (query) => {
-      // Stop polling if job is complete or errored
-      if (query.state.data?.status === 'complete' || query.state.data?.status === 'error') {
+      // Stop polling if job is complete, errored, or cancelled
+      if (query.state.data?.status === 'complete' || query.state.data?.status === 'error' || query.state.data?.status === 'cancelled') {
         return false;
       }
       return 2000; // Poll every 2 seconds
@@ -78,10 +78,22 @@ export const useJobStatus = (jobId: string | null, enabled: boolean = true) => {
 
   // Stop polling when job completes
   useEffect(() => {
-    if (query.data?.status === 'complete' || query.data?.status === 'error') {
+    if (query.data?.status === 'complete' || query.data?.status === 'error' || query.data?.status === 'cancelled') {
       queryClient.setQueryData(['job-status', jobId], query.data);
     }
   }, [query.data?.status, queryClient, jobId]);
 
   return query;
+};
+
+export const useCancelJob = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (jobId: string) => cancelJob(jobId),
+    onSuccess: (_, jobId) => {
+      // Invalidate job status to trigger immediate update
+      queryClient.invalidateQueries({ queryKey: ['job-status', jobId] });
+    },
+  });
 };

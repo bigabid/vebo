@@ -209,13 +209,23 @@ class CheckExecutor:
             # Default to passed when no explicit status
             if isinstance(result_dict, dict) and "status" not in result_dict:
                 result_dict = {**result_dict, "status": "passed", "message": result_dict.get("message", "")}
+            
+            # Add compared column names to the details
+            details_with_columns = {
+                **result_dict,
+                "compared_columns": {
+                    "column_1": col1,
+                    "column_2": col2
+                }
+            }
+            
             return RuleResult(
                 rule_id=rule.id,
                 rule_name=rule.name,
                 status=RuleStatus(result_dict.get("status", "passed")),
                 score=self._calculate_score(result_dict),
                 message=result_dict.get("message", ""),
-                details=result_dict,
+                details=details_with_columns,
                 execution_time_ms=execution_time,
                 timestamp=timestamp
             )
@@ -227,7 +237,14 @@ class CheckExecutor:
                 status=RuleStatus.ERROR,
                 score=0.0,
                 message=f"Cross-column check execution failed: {str(e)}",
-                details={"error": str(e), "traceback": traceback.format_exc()},
+                details={
+                    "error": str(e), 
+                    "traceback": traceback.format_exc(),
+                    "compared_columns": {
+                        "column_1": col1,
+                        "column_2": col2
+                    }
+                },
                 execution_time_ms=execution_time,
                 timestamp=timestamp
             )

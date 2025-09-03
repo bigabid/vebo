@@ -57,6 +57,12 @@ class VeboProfiler:
         self.meta_detector = MetaRuleDetector(seed=self.config.random_seed)
         self.rule_engine = RuleEngine()
         
+        # Debug: Log if we're using a passed logger
+        if logger is not None:
+            print(f"VeboProfiler: Using passed logger with {len(self.logger.get_logs())} existing logs")
+        else:
+            print("VeboProfiler: Creating new logger")
+        
         # Create execution config
         execution_config = ExecutionConfig(
             enable_cross_column=self.config.enable_cross_column,
@@ -78,6 +84,9 @@ class VeboProfiler:
                 "max_workers": self.config.max_workers
             }
         )
+        
+        # Debug: Log after initialization
+        print(f"VeboProfiler initialized: Logger now has {len(self.logger.get_logs())} logs")
     
     def profile_dataframe(self, df: pd.DataFrame, filename: str = None) -> ProfilingResult:
         """
@@ -134,6 +143,7 @@ class VeboProfiler:
             stage="column_analysis", 
             message="Analyzing column attributes and data types"
         )
+        print(f"Starting column analysis... Logger now has {len(self.logger.get_logs())} logs")
         column_attributes = self.meta_detector.analyze_dataframe(df_to_analyze)
         self.logger.info(
             stage="column_analysis",
@@ -143,6 +153,7 @@ class VeboProfiler:
                 "data_types": {col: attr.type_category.value for col, attr in list(column_attributes.items())[:5]}  # Show first 5
             }
         )
+        print(f"Completed column analysis... Logger now has {len(self.logger.get_logs())} logs")
         
         # Execute column-level checks
         self.logger.set_stage("column_checks")
@@ -150,6 +161,7 @@ class VeboProfiler:
             stage="column_checks",
             message="Executing column-level data quality checks"
         )
+        print(f"Starting column checks... Logger now has {len(self.logger.get_logs())} logs")
         column_results = self._execute_column_checks(df_to_analyze, column_attributes)
         total_column_checks = sum(len(results) for results in column_results.values())
         self.logger.info(

@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, List
 import json
 import os
 import time
+import threading
 import uuid
 import io
 import math
@@ -421,7 +422,72 @@ def _process_job(job_id: str, execution_id: str, table: str, applied_filters: Di
                 )
                 
                 profiler = VeboProfiler(ProfilingConfig(), logger=logger)
+                
+                # Add some debug logging
+                logger.info(
+                    stage="profiling_start",
+                    message="Background log updater starting..."
+                )
+                
+                # Debug: Check initial log count
+                initial_logs = logger.get_logs()
+                print(f"Initial log count before starting profiler: {len(initial_logs)}")
+                
+                # Set up periodic log updates during profiling
+                def periodic_log_updater():
+                    iteration = 0
+                    while job_id in JOBS:
+                        try:
+                            iteration += 1
+                            current_job = JOBS.get(job_id)
+                            if current_job and current_job.status == "running":
+                                # Get fresh logs from the shared logger
+                                raw_logs = logger.get_logs()
+                                fresh_logs = [LogEntry(**log) for log in raw_logs]
+                                log_count = len(fresh_logs)
+                                
+                                # Debug: Print to console
+                                print(f"Background updater iteration {iteration}: Found {log_count} logs")
+                                if log_count > 0:
+                                    latest_raw_log = raw_logs[-1]
+                                    print(f"Latest log: {latest_raw_log.get('message', 'No message')}")
+                                
+                                # Update job with fresh logs
+                                JOBS[job_id] = InsightsJob(
+                                    jobId=job_id,
+                                    status="running",
+                                    progress=current_job.progress or 50,
+                                    message=current_job.message,
+                                    logs=fresh_logs
+                                )
+                            elif current_job and current_job.status in ["cancelled", "complete", "error"]:
+                                print(f"Background updater stopping: job status is {current_job.status}")
+                                break
+                            else:
+                                print("Background updater stopping: job not found or invalid")
+                                break
+                        except Exception as e:
+                            print(f"Background log updater error: {e}")
+                            import traceback
+                            traceback.print_exc()
+                        time.sleep(2)  # Update every 2 seconds
+                    print("Background log updater thread exiting")
+                
+                # Start the background log updater
+                log_updater_thread = threading.Thread(target=periodic_log_updater, daemon=True)
+                log_updater_thread.start()
+                
+                # Check for cancellation before starting profiling
+                current_job = JOBS.get(job_id)
+                if current_job and current_job.status == "cancelled":
+                    return
+                
                 profiling_result = profiler.profile_dataframe(df, filename=table)
+                
+                # Check for cancellation after profiling completes
+                current_job = JOBS.get(job_id)
+                if current_job and current_job.status == "cancelled":
+                    return
                 
                 # Update job progress during post-processing
                 logger.set_stage("post_processing")
@@ -545,6 +611,34 @@ def get_insights_status(jobId: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return JSONResponse(content=_sanitize_for_json(job.dict()))
+
+
+class CancelJobRequest(BaseModel):
+    jobId: str
+
+@app.post("/insights/cancel")
+def cancel_insights(req: CancelJobRequest):
+    """Cancel a running insights job."""
+    job_id = req.jobId
+    if not job_id:
+        raise HTTPException(status_code=400, detail="Missing jobId")
+    
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status not in ["running"]:
+        raise HTTPException(status_code=400, detail="Job is not running")
+    
+    # Mark job as cancelled
+    JOBS[job_id] = InsightsJob(
+        jobId=job_id,
+        status="cancelled",
+        message="Job cancelled by user",
+        logs=job.logs if hasattr(job, 'logs') else []
+    )
+    
+    return {"status": "cancelled", "message": "Job cancelled successfully"}
 
 
 @app.get("/health")

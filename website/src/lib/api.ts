@@ -24,7 +24,7 @@ export interface LogEntry {
 
 export interface InsightsJob {
   jobId: string;
-  status: 'running' | 'complete' | 'error';
+  status: 'running' | 'complete' | 'error' | 'cancelled';
   progress?: number;
   message?: string;
   insights?: InsightsData;
@@ -275,6 +275,28 @@ export const fetchPartitions = async (
 
 const INSIGHTS_API = (import.meta as any).env?.VITE_INSIGHTS_API || 'http://localhost:8000';
 
+export const getJobStatus = async (jobId: string): Promise<InsightsJob> => {
+  const res = await fetch(`${INSIGHTS_API}/insights/status?jobId=${encodeURIComponent(jobId)}`);
+  if (!res.ok) {
+    throw new Error('Failed to get job status');
+  }
+  return res.json();
+};
+
+export const cancelJob = async (jobId: string): Promise<{ status: string; message: string }> => {
+  const response = await fetch(`${INSIGHTS_API}/insights/cancel`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ jobId }),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to cancel job');
+  }
+  return response.json();
+};
+
 export const startInsightsJob = async (
   params: {
     dataSource: string;
@@ -316,12 +338,4 @@ export const startInsightsJob = async (
     throw new Error('Failed to start insights job');
   }
   return pyRes.json();
-};
-
-export const getJobStatus = async (jobId: string): Promise<InsightsJob> => {
-  const res = await fetch(`${INSIGHTS_API}/insights/status?jobId=${encodeURIComponent(jobId)}`);
-  if (!res.ok) {
-    throw new Error('Failed to get job status');
-  }
-  return res.json();
 };
