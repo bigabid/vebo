@@ -22,7 +22,7 @@ def run_tests(test_type="all", verbose=False, coverage=True, parallel=False):
     """
     
     # Base pytest command
-    cmd = ["python", "-m", "pytest"]
+    cmd = ["python3", "-m", "pytest"]
     
     # Add test path based on type
     if test_type == "unit":
