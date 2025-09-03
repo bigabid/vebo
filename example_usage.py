@@ -2,65 +2,136 @@
 """
 Example usage of the Vebo Python code generation system for data profiling.
 
-This script demonstrates how to use the profiler to analyze a sample dataset.
+This script demonstrates how to use the profiler to analyze the Kaggle Titanic dataset.
 """
 
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 import sys
 import os
+from pathlib import Path
 
 # Add the src directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from vebo_profiler import VeboProfiler, ProfilingConfig
+from vebo_profiler import VeboProfiler
+from vebo_profiler.core.profiler import ProfilingConfig
 
 
-def create_sample_dataset() -> pd.DataFrame:
+
+def download_titanic_dataset() -> pd.DataFrame:
     """
-    Create a sample dataset for demonstration.
+    Download and load the Kaggle Titanic dataset.
     
     Returns:
-        Sample DataFrame with various data types and patterns
+        Titanic DataFrame
+    """
+    # Create data directory if it doesn't exist
+    data_dir = Path("data")
+    data_dir.mkdir(exist_ok=True)
+    
+    # Download the dataset if not already present
+    train_file = data_dir / "train.csv"
+    if not train_file.exists():
+        print("📥 Attempting to download Titanic dataset from Kaggle...")
+        try:
+            import kaggle
+            kaggle.api.dataset_download_files(
+                'c/titanic', 
+                path=str(data_dir), 
+                unzip=True
+            )
+            print("✅ Dataset downloaded successfully!")
+        except Exception as e:
+            print(f"❌ Error downloading dataset: {e}")
+            print("Please ensure you have:")
+            print("1. Kaggle API credentials set up (kaggle.json in ~/.kaggle/)")
+            print("2. kaggle package installed (pip install kaggle)")
+            print("\nAlternatively, you can manually download the dataset from:")
+            print("https://www.kaggle.com/c/titanic/data")
+            print("and place train.csv in the 'data' directory.")
+            print("\nFor now, using a sample dataset for demonstration...")
+            # Create a sample Titanic-like dataset
+            return create_sample_titanic_dataset()
+    
+    # Load the training data
+    df = pd.read_csv(train_file)
+    print(f"📊 Loaded Titanic dataset with {len(df)} rows and {len(df.columns)} columns")
+    
+    return df
+
+
+def create_sample_titanic_dataset() -> pd.DataFrame:
+    """
+    Create a sample Titanic-like dataset for demonstration when Kaggle download fails.
+    
+    Returns:
+        Sample Titanic DataFrame
     """
     np.random.seed(42)
     
-    # Create sample data
+    # Create sample data with Titanic-like structure
     n_rows = 1000
     
+    # Passenger classes
+    pclass = np.random.choice([1, 2, 3], n_rows, p=[0.2, 0.3, 0.5])
+    
+    # Gender
+    sex = np.random.choice(['male', 'female'], n_rows, p=[0.6, 0.4])
+    
+    # Age with some missing values
+    age = np.random.normal(30, 15, n_rows)
+    age = np.where(age < 0, np.nan, age)
+    age = np.where(np.random.random(n_rows) < 0.1, np.nan, age)  # 10% missing
+    
+    # Survival based on class and gender (higher class and female more likely to survive)
+    survival_prob = np.where(sex == 'female', 0.7, 0.2)
+    survival_prob = np.where(pclass == 1, survival_prob + 0.2, survival_prob)
+    survival_prob = np.where(pclass == 3, survival_prob - 0.1, survival_prob)
+    survived = np.random.binomial(1, np.clip(survival_prob, 0, 1), n_rows)
+    
+    # Fare based on class
+    fare = np.where(pclass == 1, np.random.normal(100, 50, n_rows),
+                   np.where(pclass == 2, np.random.normal(30, 15, n_rows),
+                           np.random.normal(10, 5, n_rows)))
+    fare = np.where(fare < 0, 0, fare)
+    
+    # Siblings/spouses and parents/children
+    sibsp = np.random.poisson(0.5, n_rows)
+    parch = np.random.poisson(0.4, n_rows)
+    
+    # Embarked ports
+    embarked = np.random.choice(['S', 'C', 'Q'], n_rows, p=[0.7, 0.2, 0.1])
+    
+    # Names (simplified)
+    names = [f"Passenger_{i}" for i in range(n_rows)]
+    
+    # Tickets
+    tickets = [f"TICKET_{np.random.randint(100000, 999999)}" for _ in range(n_rows)]
+    
+    # Cabins (mostly missing)
+    cabins = [f"C{np.random.randint(1, 100)}" if np.random.random() < 0.2 else None for _ in range(n_rows)]
+    
     data = {
-        # Numeric columns
-        'age': np.random.randint(18, 80, n_rows),
-        'salary': np.random.normal(50000, 15000, n_rows),
-        'score': np.random.uniform(0, 100, n_rows),
-        
-        # Textual columns
-        'name': [f'Person_{i}' for i in range(n_rows)],
-        'email': [f'person{i}@example.com' for i in range(n_rows)],
-        'phone': [f'+1-555-{np.random.randint(100, 999)}-{np.random.randint(1000, 9999)}' for _ in range(n_rows)],
-        
-        # Categorical columns
-        'department': np.random.choice(['IT', 'HR', 'Finance', 'Marketing', 'Sales'], n_rows),
-        'status': np.random.choice(['Active', 'Inactive'], n_rows),
-        
-        # Boolean columns
-        'is_manager': np.random.choice([True, False], n_rows),
-        
-        # DateTime columns
-        'hire_date': [datetime.now() - timedelta(days=np.random.randint(0, 3650)) for _ in range(n_rows)],
-        
-        # Columns with nulls
-        'bonus': np.random.choice([1000, 2000, 3000, np.nan], n_rows, p=[0.3, 0.3, 0.3, 0.1]),
-        
-        # Constant column
-        'company': ['Vebo Corp'] * n_rows,
-        
-        # Binary column
-        'is_remote': np.random.choice([0, 1], n_rows)
+        'PassengerId': range(1, n_rows + 1),
+        'Survived': survived,
+        'Pclass': pclass,
+        'Name': names,
+        'Sex': sex,
+        'Age': age,
+        'SibSp': sibsp,
+        'Parch': parch,
+        'Ticket': tickets,
+        'Fare': fare,
+        'Cabin': cabins,
+        'Embarked': embarked
     }
     
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    print(f"📊 Created sample Titanic dataset with {len(df)} rows and {len(df.columns)} columns")
+    
+    return df
 
 
 def main():
@@ -68,10 +139,9 @@ def main():
     print("🚀 Vebo Data Profiler - Python Code Generation System")
     print("=" * 60)
     
-    # Create sample dataset
-    print("📊 Creating sample dataset...")
-    df = create_sample_dataset()
-    print(f"   Created dataset with {len(df)} rows and {len(df.columns)} columns")
+    # Download and load Titanic dataset
+    print("📊 Loading Titanic dataset...")
+    df = download_titanic_dataset()
     print(f"   Columns: {list(df.columns)}")
     print()
     
@@ -97,7 +167,7 @@ def main():
     start_time = datetime.now()
     
     try:
-        result = profiler.profile_dataframe(df, filename="sample_dataset.csv")
+        result = profiler.profile_dataframe(df, filename="titanic_train.csv")
         
         end_time = datetime.now()
         duration = (end_time - start_time).total_seconds()
@@ -142,7 +212,7 @@ def main():
             print()
         
         # Save results
-        output_file = "profiling_results.json"
+        output_file = "titanic_profiling_results.json"
         profiler.save_result(result, output_file)
         print(f"💾 Results saved to: {output_file}")
         
