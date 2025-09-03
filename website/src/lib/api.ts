@@ -64,6 +64,17 @@ export interface ColumnInsight {
   topValues?: { value: string; count: number }[];
   numeric?: { min: number; max: number; avg: number };
   temporal?: { min: string; max: string };
+  basic?: {
+    uniqueCount?: number;
+    uniqueRatio?: number;
+    duplicateCount?: number;
+    duplicateRatio?: number;
+    nullCount?: number;
+    nullRatioDetailed?: number;
+    mostCommonValue?: string | number | null;
+    mostCommonFrequency?: number;
+    mostCommonFrequencyRatio?: number;
+  };
 }
 
 // Mock delay utility

@@ -156,6 +156,54 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
             </div>
           </div>
         )}
+
+        {/* Additional basic details */}
+        {column.basic && (
+          <div className="space-y-2">
+            <h5 className="text-sm font-medium text-foreground">Details</h5>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {typeof column.basic.uniqueCount !== 'undefined' && (
+                <div>
+                  <span className="text-muted-foreground block">Unique Count</span>
+                  <span className="font-medium">{formatNumber(column.basic.uniqueCount)}</span>
+                </div>
+              )}
+              {typeof column.basic.uniqueRatio !== 'undefined' && (
+                <div>
+                  <span className="text-muted-foreground block">Unique Ratio</span>
+                  <span className="font-medium">{Math.round((column.basic.uniqueRatio || 0) * 100)}%</span>
+                </div>
+              )}
+              {typeof column.basic.duplicateCount !== 'undefined' && (
+                <div>
+                  <span className="text-muted-foreground block">Duplicate Count</span>
+                  <span className="font-medium">{formatNumber(column.basic.duplicateCount)}</span>
+                </div>
+              )}
+              {typeof column.basic.duplicateRatio !== 'undefined' && (
+                <div>
+                  <span className="text-muted-foreground block">Duplicate Ratio</span>
+                  <span className="font-medium">{Math.round((column.basic.duplicateRatio || 0) * 100)}%</span>
+                </div>
+              )}
+              {typeof column.basic.nullCount !== 'undefined' && (
+                <div>
+                  <span className="text-muted-foreground block">Null Count</span>
+                  <span className="font-medium">{formatNumber(column.basic.nullCount)}</span>
+                </div>
+              )}
+              {typeof column.basic.mostCommonValue !== 'undefined' && (
+                <div className="col-span-2">
+                  <span className="text-muted-foreground block">Most Common</span>
+                  <span className="font-medium break-words">{String(column.basic.mostCommonValue ?? '—')}</span>
+                  {typeof column.basic.mostCommonFrequency !== 'undefined' && (
+                    <span className="ml-2 text-xs text-muted-foreground">({formatNumber(column.basic.mostCommonFrequency)})</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </Card>
   );

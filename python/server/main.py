@@ -80,29 +80,61 @@ def _map_profiler_to_insights(table: str, applied_filters: Dict[str, list], df: 
         }
         # numeric stats if available
         checks = analysis.get("checks", [])
+        # index checks by id for convenience
+        checks_by_id = {chk.get("check_id") or chk.get("rule_id"): chk for chk in checks if isinstance(chk, dict)}
+
         # try to find numeric_stats details
         numeric_stats = None
-        for chk in checks:
-            if chk.get("check_id") == "numeric_stats" and isinstance(chk.get("details"), dict):
-                numeric_stats = chk["details"].get("statistics")
-                break
+        ns = checks_by_id.get("numeric_stats") or {}
+        if isinstance(ns.get("details"), dict):
+            numeric_stats = ns["details"].get("statistics")
         if numeric_stats:
             col_info["numeric"] = {
                 "min": numeric_stats.get("min"),
                 "max": numeric_stats.get("max"),
                 "avg": numeric_stats.get("mean"),
             }
-        # common values
+
+        # common values (most_common_value)
         most_common = None
-        for chk in checks:
-            if chk.get("check_id") == "most_common_value":
-                most_common = chk.get("details")
-                break
+        mc = checks_by_id.get("most_common_value") or {}
+        if isinstance(mc.get("details"), dict):
+            most_common = mc.get("details")
         if most_common:
             val = most_common.get("most_common_value")
             cnt = most_common.get("frequency")
             if val is not None and cnt is not None:
                 col_info["topValues"] = [{"value": str(val), "count": int(cnt)}]
+
+        # basic details: unique_count, duplicate_ratio, most common ratios, etc.
+        basic: Dict[str, Any] = {}
+
+        uc = checks_by_id.get("unique_count") or {}
+        if isinstance(uc.get("details"), dict):
+            if isinstance(uc["details"].get("unique_count"), (int, float)):
+                basic["uniqueCount"] = uc["details"]["unique_count"]
+            if isinstance(uc["details"].get("total_count"), (int, float)) and isinstance(uc["details"].get("unique_ratio"), (int, float)):
+                basic["uniqueRatio"] = uc["details"].get("unique_ratio")
+
+        dup = checks_by_id.get("duplicate_value_analysis") or {}
+        if isinstance(dup.get("details"), dict):
+            basic["duplicateRatio"] = dup["details"].get("duplicate_ratio")
+            if isinstance(dup["details"].get("duplicate_count"), (int, float)):
+                basic["duplicateCount"] = dup["details"].get("duplicate_count")
+
+        na = checks_by_id.get("null_analysis") or {}
+        if isinstance(na.get("details"), dict):
+            basic["nullCount"] = na["details"].get("null_count")
+            basic["nullRatioDetailed"] = na["details"].get("null_ratio")
+
+        if isinstance(most_common, dict):
+            basic["mostCommonValue"] = most_common.get("most_common_value")
+            basic["mostCommonFrequency"] = most_common.get("frequency")
+            basic["mostCommonFrequencyRatio"] = most_common.get("frequency_ratio")
+
+        if basic:
+            col_info["basic"] = basic
+
         columns.append(col_info)
 
     insights = {
