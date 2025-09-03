@@ -530,7 +530,7 @@ def execute_cross_column_check(df: pd.DataFrame, col1: str, col2: str) -> Dict[s
     def execute_cross_column_checks_parallel(self, rules: List[Rule], df: pd.DataFrame, 
                                            column_pairs: List[Tuple[str, str]]) -> List[RuleResult]:
         """
-        Execute multiple cross-column checks in parallel.
+        Execute multiple cross-column checks in parallel with skip logic for identical columns.
         
         Args:
             rules: List of rules to execute
@@ -540,25 +540,53 @@ def execute_cross_column_check(df: pd.DataFrame, col1: str, col2: str) -> Dict[s
         Returns:
             List of RuleResult objects
         """
+        # First, find and execute identicality rule to identify identical column pairs
+        identicality_rule = None
+        other_rules = []
+        
+        for rule in rules:
+            if rule.id == "identicality":
+                identicality_rule = rule
+            else:
+                other_rules.append(rule)
+        
+        results = []
+        identical_pairs = set()
+        
+        # Execute identicality rule first for all pairs
+        if identicality_rule:
+            for col1, col2 in column_pairs:
+                result = self.execute_cross_column_check(identicality_rule, df, col1, col2)
+                results.append(result)
+                
+                # Check if columns are identical and should skip other rules
+                if (result.details and 
+                    result.details.get("should_skip_other_rules", False)):
+                    identical_pairs.add((col1, col2))
+        
+        # Filter column pairs to exclude identical ones for other rules
+        non_identical_pairs = [pair for pair in column_pairs if pair not in identical_pairs]
+        
+        if not other_rules or not non_identical_pairs:
+            return results
+        
         if not self.config.enable_parallel:
-            # Execute sequentially
-            results = []
-            for rule in rules:
-                for col1, col2 in column_pairs:
+            # Execute sequentially for non-identical pairs
+            for rule in other_rules:
+                for col1, col2 in non_identical_pairs:
                     result = self.execute_cross_column_check(rule, df, col1, col2)
                     results.append(result)
             return results
         
-        # Execute in parallel
+        # Execute other rules in parallel for non-identical pairs only
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
             futures = []
             
-            for rule in rules:
-                for col1, col2 in column_pairs:
+            for rule in other_rules:
+                for col1, col2 in non_identical_pairs:
                     future = executor.submit(self.execute_cross_column_check, rule, df, col1, col2)
                     futures.append(future)
             
-            results = []
             for future in concurrent.futures.as_completed(futures, timeout=self.config.timeout_seconds):
                 try:
                     result = future.result()

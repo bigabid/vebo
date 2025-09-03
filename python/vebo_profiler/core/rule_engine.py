@@ -18,14 +18,18 @@ from .meta_rules import ColumnAttributes, MetaRuleDetector, TypeCategory, Divers
 
 
 class RuleStatus(Enum):
-    """Status of a rule execution."""
+    """Status of a rule execution indicating interest level."""
     PENDING = "pending"
     RUNNING = "running"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    SKIPPED = "skipped"
+    # Keep old values for backward compatibility
     PASSED = "passed"
     FAILED = "failed"
     WARNING = "warning"
     ERROR = "error"
-    SKIPPED = "skipped"
 
 
 class RulePriority(Enum):
@@ -732,8 +736,9 @@ def check_identicality(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]
     return {
         "are_identical": are_identical,
         "are_identical_no_nulls": are_identical_no_nulls,
-        "status": "warning" if are_identical else "passed",
-        "message": f"Columns {'are' if are_identical else 'are not'} identical"
+        "status": "high" if are_identical else "low",
+        "message": f"Columns {'are' if are_identical else 'are not'} identical",
+        "should_skip_other_rules": are_identical  # Signal to skip other rules for this pair
     }
 """
             ),
@@ -743,7 +748,7 @@ def check_identicality(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]
                 description="Calculate correlation between numeric columns",
                 category="cross_column",
                 column_types=["numeric"],
-                diversity_levels=["medium", "high", "distinctive"],
+                diversity_levels=["low", "medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
                 code_template="""
@@ -760,30 +765,31 @@ def check_correlation(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
             return {
                 "correlation": None,
                 "strength": "unknown",
-                "status": "warning",
+                "status": "skipped",
                 "message": "Could not calculate correlation (insufficient data or all NaN values)"
             }
         
-        # Determine correlation strength
+        # Determine correlation strength and interest level
         abs_corr = abs(correlation)
         if abs_corr >= 0.8:
             strength = "strong"
+            status = "high"
         elif abs_corr >= 0.5:
             strength = "moderate"
-        elif abs_corr >= 0.3:
-            strength = "weak"
+            status = "medium"
         else:
-            strength = "very weak"
+            strength = "weak" if abs_corr >= 0.3 else "very weak"
+            status = "low"
         
         return {
             "correlation": correlation,
             "strength": strength,
-            "status": "passed",
+            "status": status,
             "message": f"Correlation: {correlation:.3f} ({strength})"
         }
     except Exception as e:
         return {
-            "status": "error",
+            "status": "high",
             "message": f"Correlation calculation failed: {str(e)}"
         }
 """
@@ -806,41 +812,76 @@ def check_missingness_relationships(df: pd.DataFrame, col1: str, col2: str) -> D
     s1_null_only = (s1.isna() & s2.notna()).sum()
     s2_null_only = (s2.isna() & s1.notna()).sum()
     co_null_ratio = both_null / n if n > 0 else 0
+    
+    # Determine interest level based on synchronized missingness
+    # High interest when columns have strong synchronized missingness pattern
+    status = "high" if co_null_ratio >= 0.3 else "low"
+    
     return {
         "both_null_count": int(both_null),
         "s1_null_only_count": int(s1_null_only),
         "s2_null_only_count": int(s2_null_only),
         "co_null_ratio": float(co_null_ratio),
-        "status": "passed",
-        "message": "Missingness relationship computed"
+        "status": status,
+        "message": f"Synchronized missingness: {co_null_ratio:.1%} of rows"
     }
 """
             ),
             Rule(
                 id="functional_dependency",
                 name="Functional Dependency Approximation",
-                description="Approximate whether col1 determines col2",
+                description="Approximate functional dependency in both directions and return the strongest",
                 category="cross_column",
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["low", "medium", "high", "distinctive"],
+                diversity_levels=["binary", "low", "medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
                 code_template="""
 def check_functional_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
-    # Group by col1 and check uniqueness of col2 values for functional dependency
-    grouped_data = df[[col1, col2]].dropna().groupby(col1, dropna=False)[col2]
-    g = grouped_data.apply(lambda x: len(set(x)))
-    if len(g) == 0:
-        return {"status": "warning", "message": "Insufficient data", "fd_holds_ratio": 0}
-    violating = (g > 1).sum()
-    fd_holds_ratio = 1.0 - (violating / len(g))
-    status = "passed" if fd_holds_ratio >= 0.95 else ("warning" if fd_holds_ratio >= 0.8 else "failed")
+    def check_direction(df, source_col, target_col):
+        # Group by source_col and check uniqueness of target_col values for functional dependency
+        grouped_data = df[[source_col, target_col]].dropna().groupby(source_col, dropna=False)[target_col]
+        g = grouped_data.apply(lambda x: len(set(x)))
+        if len(g) == 0:
+            return {"fd_holds_ratio": 0, "violating_groups": 0, "total_groups": 0}
+        violating = (g > 1).sum()
+        fd_holds_ratio = 1.0 - (violating / len(g))
+        return {
+            "fd_holds_ratio": float(fd_holds_ratio),
+            "violating_groups": int(violating),
+            "total_groups": int(len(g))
+        }
+    
+    # Check both directions
+    fd_col1_to_col2 = check_direction(df, col1, col2)
+    fd_col2_to_col1 = check_direction(df, col2, col1)
+    
+    # Determine which direction has stronger dependency
+    if fd_col1_to_col2["fd_holds_ratio"] >= fd_col2_to_col1["fd_holds_ratio"]:
+        best_direction = f"{col1} -> {col2}"
+        best_ratio = fd_col1_to_col2["fd_holds_ratio"]
+        best_violating = fd_col1_to_col2["violating_groups"]
+        best_total = fd_col1_to_col2["total_groups"]
+    else:
+        best_direction = f"{col2} -> {col1}"
+        best_ratio = fd_col2_to_col1["fd_holds_ratio"]
+        best_violating = fd_col2_to_col1["violating_groups"]
+        best_total = fd_col2_to_col1["total_groups"]
+    
+    if best_total == 0:
+        return {"status": "low", "message": "Insufficient data", "fd_holds_ratio": 0}
+    
+    status = "high" if best_ratio >= 0.95 else ("medium" if best_ratio >= 0.8 else "low")
+    
     return {
-        "fd_holds_ratio": float(fd_holds_ratio),
-        "violating_groups": int(violating),
-        "total_groups": int(len(g)),
+        "best_direction": best_direction,
+        "fd_holds_ratio": float(best_ratio),
+        "violating_groups": int(best_violating),
+        "total_groups": int(best_total),
+        "col1_to_col2_ratio": float(fd_col1_to_col2["fd_holds_ratio"]),
+        "col2_to_col1_ratio": float(fd_col2_to_col1["fd_holds_ratio"]),
         "status": status,
-        "message": f"FD holds in {fd_holds_ratio:.2%} of groups"
+        "message": f"Best FD: {best_direction} holds in {best_ratio:.2%} of groups"
     }
 """
             ),
@@ -850,20 +891,13 @@ def check_functional_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[
                 description="Whether a combination of two columns yields unique rows",
                 category="cross_column",
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["low", "medium", "high", "distinctive"],
+                diversity_levels=["binary", "low", "medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
                 code_template="""
 def check_composite_uniqueness(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
     # Check if either column is 100% unique by itself
     total = len(df)
-    if total == 0:
-        return {
-            "duplicate_pairs": 0,
-            "unique_pair_ratio": 1.0,
-            "status": "passed",
-            "message": "Empty dataset"
-        }
     
     # Check individual column uniqueness
     col1_unique_count = df[col1].nunique(dropna=True)
@@ -904,7 +938,15 @@ def check_composite_uniqueness(df: pd.DataFrame, col1: str, col2: str) -> Dict[s
     # Proceed with normal composite uniqueness check
     dup_count = df.duplicated(subset=[col1, col2]).sum()
     unique_ratio = 1.0 - (dup_count / total if total > 0 else 0)
-    status = "passed" if dup_count == 0 else ("warning" if unique_ratio >= 0.99 else "failed")
+    
+    # Determine interest level based on uniqueness
+    if unique_ratio == 1.0:
+        status = "high"  # 100% unique pairs - very interesting
+    elif unique_ratio >= 0.99:
+        status = "medium"  # Nearly unique pairs - moderately interesting
+    else:
+        status = "low"  # Many duplicates - low interest
+    
     return {
         "duplicate_pairs": int(dup_count),
         "unique_pair_ratio": float(unique_ratio),
@@ -917,38 +959,14 @@ def check_composite_uniqueness(df: pd.DataFrame, col1: str, col2: str) -> Dict[s
     }
 """
             ),
-            Rule(
-                id="inclusion_dependency",
-                name="Inclusion Dependency",
-                description="Whether values of col1 appear as a subset of col2",
-                category="cross_column",
-                column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
-                diversity_levels=["low", "medium", "high", "distinctive"],
-                nullability_levels=["empty", "low", "medium", "high", "full"],
-                requires_cross_column=True,
-                code_template="""
-def check_inclusion_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
-    s1 = pd.Series(df[col1].dropna().unique())
-    s2_set = set(pd.Series(df[col2].dropna().unique()).tolist())
-    if len(s1) == 0:
-        return {"status": "warning", "message": "No values in first column", "coverage_ratio": 0}
-    in_set = s1.apply(lambda x: x in s2_set)
-    coverage_ratio = float(in_set.sum()) / float(len(s1))
-    status = "passed" if coverage_ratio == 1.0 else ("warning" if coverage_ratio >= 0.9 else "failed")
-    return {
-        "coverage_ratio": coverage_ratio,
-        "status": status,
-        "message": f"{coverage_ratio:.2%} of {col1} values appear in {col2}"
-    }
-"""
-            ),
+
             Rule(
                 id="categorical_association_cramers_v",
-                name="Categorical Association (Cramér’s V)",
+                name="Categorical Association (Cramér's V)",
                 description="Association strength between two categorical columns",
                 category="cross_column",
                 column_types=["categorical", "textual"],
-                diversity_levels=["low", "medium", "high", "distinctive"],
+                diversity_levels=["binary", "low", "medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
                 code_template="""
@@ -958,7 +976,7 @@ def check_categorical_association_cramers_v(df: pd.DataFrame, col1: str, col2: s
     ct = pd.crosstab(s1, s2)
     n = ct.values.sum()
     if n == 0 or ct.shape[0] < 2 or ct.shape[1] < 2:
-        return {"status": "warning", "message": "Insufficient categories", "cramers_v": None}
+        return {"status": "skipped", "message": "Insufficient categories", "cramers_v": None}
     row_sums = ct.values.sum(axis=1, keepdims=True)
     col_sums = ct.values.sum(axis=0, keepdims=True)
     expected = row_sums @ col_sums / n
@@ -966,14 +984,27 @@ def check_categorical_association_cramers_v(df: pd.DataFrame, col1: str, col2: s
         chi2 = np.nansum((ct.values - expected) ** 2 / np.where(expected == 0, np.nan, expected))
     k = min(ct.shape)
     v = np.sqrt(chi2 / (n * (k - 1))) if k > 1 and n > 0 else np.nan
-    strength = (
-        "strong" if v >= 0.5 else ("moderate" if v >= 0.3 else ("weak" if v >= 0.1 else "very weak"))
-    ) if not np.isnan(v) else "unknown"
+    
+    # Determine strength and interest level
+    if not np.isnan(v):
+        if v >= 0.5:
+            strength = "strong"
+            status = "high"
+        elif v >= 0.3:
+            strength = "moderate"
+            status = "medium"
+        else:
+            strength = "weak" if v >= 0.1 else "very weak"
+            status = "low"
+    else:
+        strength = "unknown"
+        status = "low"
+    
     return {
         "cramers_v": float(v) if not np.isnan(v) else None,
         "strength": strength,
-        "status": "passed",
-        "message": f"Cramér’s V: {v:.3f}" if not np.isnan(v) else "Cramér’s V unavailable"
+        "status": status,
+        "message": f"Cramér's V: {v:.3f} ({strength})" if not np.isnan(v) else "Cramér's V unavailable"
     }
 """
             )
@@ -1087,55 +1118,7 @@ def check_data_format_patterns(series: pd.Series) -> Dict[str, Any]:
     
     def _add_advanced_cross_column_rules(self):
         """Add advanced cross-column analysis rules."""
-        rules = [
-
-            
-            Rule(
-                id="value_overlap_analysis",
-                name="Value Overlap Analysis", 
-                description="Analyze overlap of values between two columns",
-                category="advanced_cross_column",
-                column_types=["textual", "categorical", "numeric"],
-                diversity_levels=["low", "medium", "high", "distinctive"],
-                nullability_levels=["empty", "low", "medium"],
-                requires_cross_column=True,
-                code_template="""
-def check_value_overlap_analysis(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
-    s1 = df[col1].dropna()
-    s2 = df[col2].dropna()
-    
-    if len(s1) == 0 or len(s2) == 0:
-        return {"status": "warning", "message": "No data in one or both columns"}
-    
-    # Convert to sets for overlap analysis
-    set1 = set(s1.astype(str).unique())
-    set2 = set(s2.astype(str).unique())
-    
-    # Calculate overlap statistics
-    intersection = set1.intersection(set2)
-    union = set1.union(set2)
-    
-    overlap_count = len(intersection)
-    jaccard_similarity = len(intersection) / len(union) if len(union) > 0 else 0
-    
-    # Overlap ratios for each column
-    col1_overlap_ratio = overlap_count / len(set1) if len(set1) > 0 else 0
-    col2_overlap_ratio = overlap_count / len(set2) if len(set2) > 0 else 0
-    
-    return {
-        "col1_unique_values": len(set1),
-        "col2_unique_values": len(set2),
-        "overlapping_values": overlap_count,
-        "jaccard_similarity": float(jaccard_similarity),
-        "col1_overlap_ratio": float(col1_overlap_ratio),
-        "col2_overlap_ratio": float(col2_overlap_ratio),
-        "total_unique_values": len(union),
-        "status": "passed",
-        "message": f"Overlap: {overlap_count} values, Jaccard: {jaccard_similarity:.3f}"
-    }
-"""
-            )
-        ]
+        rules = []
         
         for rule in rules:
             self._register_rule(rule, builtin=True)
@@ -1285,114 +1268,11 @@ def check_cardinality_analysis(series: pd.Series) -> Dict[str, Any]:
             if rule.requires_cross_column and not enable_cross_column:
                 continue
             
-            # Skip unnecessary rules for likely index columns
-            if self._should_skip_rule_for_index(rule, attributes):
-                continue
-            
-            # Skip expensive rules inappropriate for column characteristics
-            if self._should_skip_expensive_rule(rule, attributes):
-                continue
-            
             relevant_rules.append(rule)
         
         return relevant_rules
     
-    def _should_skip_rule_for_index(self, rule: Rule, attributes: ColumnAttributes) -> bool:
-        """
-        Determine if a rule should be skipped for likely index columns.
-        
-        Args:
-            rule: Rule to check
-            attributes: Column attributes
-            
-        Returns:
-            True if the rule should be skipped for this index column
-        """
-        # Only skip rules for likely index columns
-        if not attributes.is_likely_index:
-            return False
-        
-        # Rules that are typically irrelevant for index columns
-        irrelevant_for_index = {
-            # Statistical analysis rules
-            "numeric_stats", "outlier_detection", "modality_estimation", 
-            "numeric_histogram_quantiles", "outlier_detection_zscore",
-            
-            # Text pattern analysis (indices are usually not meaningful patterns)
-            "text_patterns", "whitespace_encoding_checks",
-            
-            # Analysis that's not useful for unique identifiers
-            "stability_entropy",  # All values are unique, so entropy is max
-            "duplicate_value_analysis",  # No duplicates by definition
-            
-            # Length analysis might not be relevant for IDs (though could be kept)
-            "length_analysis"
-        }
-        
-        # Keep basic stats and uniqueness analysis even for indices
-        essential_for_index = {
-            "unique_count", "most_common_value", "null_analysis", 
-            "top_k_frequencies", "parseability_analysis",
-            # Privacy rules are important for index columns (PII detection)
-            "pii_pattern_detection", "data_format_patterns",
-            # Performance rules are useful for index columns
-            "memory_usage_analysis", "cardinality_analysis"
-        }
-        
-        # Skip irrelevant rules
-        if rule.id in irrelevant_for_index:
-            return True
-        
-        # Keep essential rules
-        if rule.id in essential_for_index:
-            return False
-        
-        # For rules not explicitly categorized, use category-based logic
-        if rule.category in ["outlier_detection", "text_quality", "distribution_analysis"]:
-            return True
-        
-        return False
-    
-    def _should_skip_expensive_rule(self, rule: Rule, attributes: ColumnAttributes) -> bool:
-        """
-        Determine if an expensive rule should be skipped based on column characteristics.
-        
-        Args:
-            rule: Rule to check
-            attributes: Column attributes
-            
-        Returns:
-            True if the rule should be skipped for this column type/characteristics
-        """
-        # Skip statistical rules for binary columns (only 2 unique values)
-        if attributes.diversity_level == DiversityLevel.BINARY:
-            binary_inappropriate_rules = {
-                "outlier_detection", "modality_estimation", "distribution_analysis",
-                "outlier_detection_zscore", "numeric_histogram_quantiles"
-            }
-            if rule.id in binary_inappropriate_rules:
-                return True
-        
-        # Skip text analysis for numeric columns
-        if attributes.type_category == TypeCategory.NUMERIC:
-            text_rules = {
-                "text_patterns", "whitespace_encoding_checks", "length_analysis",
-                "text_quality", "encoding_detection"
-            }
-            if rule.id in text_rules or "text_pattern" in rule.id or "encoding" in rule.id:
-                return True
-        
-        # Skip correlation and statistical analysis for categorical columns
-        # (regardless of cardinality as user specified)
-        if attributes.type_category == TypeCategory.CATEGORICAL:
-            categorical_inappropriate_rules = {
-                "correlation", "outlier_detection", "numeric_stats", 
-                "distribution_analysis", "modality_estimation"
-            }
-            if rule.id in categorical_inappropriate_rules:
-                return True
-        
-        return False
+
     
     def _generate_column_hash(self, series: pd.Series) -> str:
         """

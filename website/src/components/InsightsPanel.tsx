@@ -1,10 +1,134 @@
-import { BarChart, TrendingUp, Database, Calendar, Hash, Type, AlertCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { BarChart, TrendingUp, Database, Calendar, Hash, Type, AlertCircle, Filter } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { InsightsData, ColumnInsight } from '@/lib/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+// Status filter component for cross-column results
+function StatusFilter({ 
+  selectedStatuses, 
+  onStatusChange 
+}: { 
+  selectedStatuses: Set<string>; 
+  onStatusChange: (statuses: Set<string>) => void; 
+}) {
+  const statusOptions = [
+    { value: 'high', label: 'High', color: 'text-red-600' },
+    { value: 'medium', label: 'Medium', color: 'text-orange-600' },
+    { value: 'low', label: 'Low', color: 'text-yellow-600' },
+    { value: 'skipped', label: 'Skipped', color: 'text-gray-600' }
+  ];
+
+  const handleStatusToggle = (status: string, checked: boolean) => {
+    const newStatuses = new Set(selectedStatuses);
+    if (checked) {
+      newStatuses.add(status);
+    } else {
+      newStatuses.delete(status);
+    }
+    onStatusChange(newStatuses);
+  };
+
+  const selectedCount = selectedStatuses.size;
+  const totalCount = statusOptions.length;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-2">
+          <Filter className="w-4 h-4" />
+          Filter Status
+          {selectedCount < totalCount && (
+            <Badge variant="secondary" className="ml-1 px-1.5 py-0.5 text-xs">
+              {selectedCount}
+            </Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56" align="end">
+        <div className="space-y-3">
+          <div className="font-medium text-sm">Show Status Levels</div>
+          <div className="space-y-2">
+            {statusOptions.map((option) => (
+              <div key={option.value} className="flex items-center space-x-2">
+                <Checkbox
+                  id={option.value}
+                  checked={selectedStatuses.has(option.value)}
+                  onCheckedChange={(checked) => handleStatusToggle(option.value, !!checked)}
+                />
+                <label 
+                  htmlFor={option.value} 
+                  className={`text-sm font-medium cursor-pointer ${option.color}`}
+                >
+                  {option.label}
+                </label>
+              </div>
+            ))}
+          </div>
+          <Separator />
+          <div className="flex justify-between">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => onStatusChange(new Set(statusOptions.map(o => o.value)))}
+            >
+              Select All
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => onStatusChange(new Set(['high']))}
+            >
+              Reset
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// StatusBadge component for cross-column rule status indicators
+function StatusBadge({ status }: { status: string }) {
+  const getStatusStyle = (status: string) => {
+    const normalizedStatus = status.toLowerCase();
+    
+    switch (normalizedStatus) {
+      case 'high':
+        return 'bg-red-200 text-red-900 border-red-300 hover:bg-red-250 dark:bg-red-800/60 dark:text-red-100 dark:border-red-600 dark:hover:bg-red-800/70';
+      case 'medium':
+        return 'bg-orange-200 text-orange-900 border-orange-300 hover:bg-orange-250 dark:bg-orange-800/60 dark:text-orange-100 dark:border-orange-600 dark:hover:bg-orange-800/70';
+      case 'low':
+        return 'bg-yellow-200 text-yellow-900 border-yellow-300 hover:bg-yellow-250 dark:bg-yellow-700/60 dark:text-yellow-100 dark:border-yellow-600 dark:hover:bg-yellow-700/70';
+      case 'skipped':
+        return 'bg-gray-200 text-gray-800 border-gray-300 hover:bg-gray-250 dark:bg-gray-700/60 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700/70';
+      // Backward compatibility for old status names
+      case 'passed':
+        return 'bg-yellow-200 text-yellow-900 border-yellow-300 hover:bg-yellow-250 dark:bg-yellow-700/60 dark:text-yellow-100 dark:border-yellow-600 dark:hover:bg-yellow-700/70';
+      case 'warning':
+        return 'bg-orange-200 text-orange-900 border-orange-300 hover:bg-orange-250 dark:bg-orange-800/60 dark:text-orange-100 dark:border-orange-600 dark:hover:bg-orange-800/70';
+      case 'error':
+      case 'failed':
+        return 'bg-red-200 text-red-900 border-red-300 hover:bg-red-250 dark:bg-red-800/60 dark:text-red-100 dark:border-red-600 dark:hover:bg-red-800/70';
+      default:
+        return 'bg-gray-200 text-gray-800 border-gray-300 hover:bg-gray-250 dark:bg-gray-700/60 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700/70';
+    }
+  };
+
+  return (
+    <span 
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors capitalize ${getStatusStyle(status)}`}
+    >
+      {status}
+    </span>
+  );
+}
 
 interface InsightsPanelProps {
   insights: InsightsData | null;
@@ -218,6 +342,9 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
 }
 
 export function InsightsPanel({ insights }: InsightsPanelProps) {
+  // State for cross-column status filtering - default to showing only 'high' status
+  const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set(['high']));
+
   if (!insights) {
     return (
       <Card className="p-8 bg-gradient-card border-0 shadow-soft">
@@ -339,26 +466,43 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
         </TabsContent>
         <TabsContent value="cross" className="mt-4">
           <Card className="p-5 bg-gradient-card border-0 shadow-soft">
-            <h3 className="text-lg font-semibold text-foreground mb-3">Cross Column Analysis</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Cross Column Analysis</h3>
+              <StatusFilter 
+                selectedStatuses={selectedStatuses}
+                onStatusChange={setSelectedStatuses}
+              />
+            </div>
             {(() => {
               const crossList = (insights.crossColumn || []).filter(cc => {
-                const nameLower = (cc.name || '').toLowerCase();
-                const id = cc.checkId || '';
                 const statusLower = (cc.status || '').toLowerCase();
-                const isPassed = statusLower === 'passed';
-                const isIdenticality = (nameLower === 'column identicality') || id === 'identicality';
-                const isCorrelation = (nameLower === 'numeric correlation') || id === 'correlation';
-                const isMissingness = (nameLower === 'missingness relationships') || id === 'missingness_relationships';
-                // Hide Column Identicality when passed
-                if (isIdenticality && isPassed) return false;
-                // Hide Missingness Relationships when passed
-                if (isMissingness && isPassed) return false;
-                // Show Numeric Correlation only when passed
-                if (isCorrelation && !isPassed) return false;
-                return true;
+                
+                // Normalize old status names to new ones for filtering
+                let normalizedStatus = statusLower;
+                if (statusLower === 'passed') normalizedStatus = 'low';
+                if (statusLower === 'warning') normalizedStatus = 'medium';
+                if (statusLower === 'error' || statusLower === 'failed') normalizedStatus = 'high';
+                
+                // Apply user's status filter selection
+                return selectedStatuses.has(normalizedStatus);
               });
+              
+              const hasAnyResults = (insights.crossColumn || []).length > 0;
+              const filteredOutCount = (insights.crossColumn || []).length - crossList.length;
+              
               return crossList.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No cross-column results available.</div>
+                <div className="text-sm text-muted-foreground">
+                  {hasAnyResults ? (
+                    <>
+                      No results match the selected status filters.
+                      {filteredOutCount > 0 && (
+                        <> {filteredOutCount} result{filteredOutCount > 1 ? 's' : ''} hidden by filters.</>
+                      )}
+                    </>
+                  ) : (
+                    "No cross-column results available."
+                  )}
+                </div>
               ) : (
                 <div className="space-y-3">
                   {crossList.map((cc, idx) => (
@@ -366,9 +510,7 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
                       <div className="flex items-center justify-between">
                         <div className="font-medium text-foreground truncate mr-2">{cc.name || cc.checkId}</div>
                         {cc.status && (
-                          <Badge variant={cc.status === 'passed' ? 'secondary' : (cc.status === 'warning' ? 'outline' : 'destructive')} className="text-xs capitalize">
-                            {cc.status}
-                          </Badge>
+                          <StatusBadge status={cc.status} />
                         )}
                       </div>
                       {cc.columns && (
