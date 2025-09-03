@@ -14,6 +14,7 @@ import boto3
 import pandas as pd
 
 from vebo_profiler.core.profiler import VeboProfiler, ProfilingConfig
+from vebo_profiler.core.logger import ProfilingLogger
 
 
 class StartInsightsRequest(BaseModel):
@@ -24,12 +25,20 @@ class StartInsightsRequest(BaseModel):
     appliedFilters: Dict[str, list] = {}
 
 
+class LogEntry(BaseModel):
+    timestamp: str
+    level: str  # info, warning, error
+    stage: str  # sampling, column_analysis, cross_column_checks, etc.
+    message: str
+    details: Optional[Dict[str, Any]] = None
+
 class InsightsJob(BaseModel):
     jobId: str
     status: str
-    progress: Optional[int] = None
+    progress: Optional[int] = None  # Keep for backward compatibility
     message: Optional[str] = None
     insights: Optional[Dict[str, Any]] = None
+    logs: List[LogEntry] = []
 
 
 app = FastAPI()
@@ -312,40 +321,180 @@ def _sanitize_for_json(value: Any) -> Any:
 
 
 def _process_job(job_id: str, execution_id: str, table: str, applied_filters: Dict[str, list]):
-    # Poll Athena for completion
+    # Create logger for this job
+    logger = ProfilingLogger()
+    
     try:
+        logger.set_stage("athena_polling")
+        logger.info(
+            stage="athena_polling", 
+            message=f"Starting Athena query polling for execution {execution_id}",
+            details={"execution_id": execution_id, "table": table}
+        )
+        
+        # Update job with initial logs
+        JOBS[job_id] = InsightsJob(
+            jobId=job_id, 
+            status="running", 
+            progress=0,
+            logs=[LogEntry(**log) for log in logger.get_logs()]
+        )
+        
+        # Poll Athena for completion
         for attempt in range(120):  # ~10 minutes max
             resp = athena.get_query_execution(QueryExecutionId=execution_id)
             status = resp.get("QueryExecution", {}).get("Status", {}).get("State")
+            
             if status == "SUCCEEDED":
+                logger.info(
+                    stage="athena_polling",
+                    message="Athena query completed successfully, downloading results"
+                )
+                
+                # Update job with download progress
+                JOBS[job_id] = InsightsJob(
+                    jobId=job_id, 
+                    status="running", 
+                    progress=20,
+                    logs=[LogEntry(**log) for log in logger.get_logs()]
+                )
+                
+                logger.set_stage("data_download")
                 output_loc = resp["QueryExecution"]["ResultConfiguration"]["OutputLocation"]
+                logger.info(
+                    stage="data_download",
+                    message=f"Downloading query results from {output_loc}"
+                )
+                
                 df = _download_athena_csv_to_dataframe(output_loc)
-                profiler = VeboProfiler(ProfilingConfig())
+                logger.info(
+                    stage="data_download",
+                    message=f"Downloaded dataset with {len(df)} rows and {len(df.columns)} columns",
+                    details={"rows": len(df), "columns": len(df.columns)}
+                )
+                
+                # Update job with profiling start
+                JOBS[job_id] = InsightsJob(
+                    jobId=job_id, 
+                    status="running", 
+                    progress=30,
+                    logs=[LogEntry(**log) for log in logger.get_logs()]
+                )
+                
+                # Start profiling with the shared logger
+                logger.set_stage("profiling_start")
+                logger.info(
+                    stage="profiling_start",
+                    message="Starting data profiling process"
+                )
+                
+                profiler = VeboProfiler(ProfilingConfig(), logger=logger)
                 profiling_result = profiler.profile_dataframe(df, filename=table)
+                
+                # Update job progress during post-processing
+                logger.set_stage("post_processing")
+                logger.info(
+                    stage="post_processing",
+                    message="Processing profiling results and generating insights"
+                )
+                
+                JOBS[job_id] = InsightsJob(
+                    jobId=job_id, 
+                    status="running", 
+                    progress=80,
+                    logs=[LogEntry(**log) for log in logger.get_logs()]
+                )
+                
                 # convert dataclass to dict via to_json or asdict
                 profiling_json = profiler.to_json(profiling_result)
                 data = json.loads(profiling_json)
                 insights = _map_profiler_to_insights(table, applied_filters, df, data)
+                
+                logger.info(
+                    stage="post_processing",
+                    message="Computing candidate keys and primary key suggestions"
+                )
+                
                 # Attach candidate unique keys suggestions
                 candidates = _compute_candidate_keys(df, table)
                 insights["candidateKeys"] = candidates
                 # Compute primary key scores from candidates
                 insights["primaryKeys"] = [_score_primary_key(c, df, table) for c in candidates[:10]]
                 insights = _sanitize_for_json(insights)
-                JOBS[job_id] = InsightsJob(jobId=job_id, status="complete", insights=insights)
+                
+                logger.info(
+                    stage="post_processing",
+                    message="All processing completed successfully",
+                    details={
+                        "candidate_keys": len(candidates),
+                        "primary_keys": min(10, len(candidates))
+                    }
+                )
+                
+                JOBS[job_id] = InsightsJob(
+                    jobId=job_id, 
+                    status="complete", 
+                    insights=insights,
+                    logs=[LogEntry(**log) for log in logger.get_logs()]
+                )
                 return
+                
             elif status in ("FAILED", "CANCELLED"):
                 msg = resp.get("QueryExecution", {}).get("Status", {}).get("StateChangeReason")
-                JOBS[job_id] = InsightsJob(jobId=job_id, status="error", message=msg)
+                logger.error(
+                    stage="athena_polling",
+                    message=f"Athena query failed: {msg}",
+                    details={"status": status, "reason": msg}
+                )
+                JOBS[job_id] = InsightsJob(
+                    jobId=job_id, 
+                    status="error", 
+                    message=msg,
+                    logs=[LogEntry(**log) for log in logger.get_logs()]
+                )
                 return
             else:
                 # QUEUED or RUNNING
-                JOBS[job_id] = InsightsJob(jobId=job_id, status="running", progress=min(99, attempt))
+                progress = min(15, attempt // 2)  # Cap initial progress at 15%
+                if attempt % 6 == 0:  # Update logs every 30 seconds (6 * 5s)
+                    logger.info(
+                        stage="athena_polling",
+                        message=f"Athena query still running... (attempt {attempt + 1}/120)",
+                        details={"status": status, "attempt": attempt + 1}
+                    )
+                
+                JOBS[job_id] = InsightsJob(
+                    jobId=job_id, 
+                    status="running", 
+                    progress=progress,
+                    logs=[LogEntry(**log) for log in logger.get_logs()]
+                )
                 time.sleep(5)
+                
         # Timeout
-        JOBS[job_id] = InsightsJob(jobId=job_id, status="error", message="Timed out waiting for Athena result")
+        logger.error(
+            stage="athena_polling",
+            message="Timed out waiting for Athena result after 10 minutes"
+        )
+        JOBS[job_id] = InsightsJob(
+            jobId=job_id, 
+            status="error", 
+            message="Timed out waiting for Athena result",
+            logs=[LogEntry(**log) for log in logger.get_logs()]
+        )
+        
     except Exception as e:
-        JOBS[job_id] = InsightsJob(jobId=job_id, status="error", message=str(e))
+        logger.error(
+            stage="error",
+            message=f"Unexpected error during job processing: {str(e)}",
+            details={"error_type": type(e).__name__, "error_message": str(e)}
+        )
+        JOBS[job_id] = InsightsJob(
+            jobId=job_id, 
+            status="error", 
+            message=str(e),
+            logs=[LogEntry(**log) for log in logger.get_logs()]
+        )
 
 
 @app.post("/insights/start")

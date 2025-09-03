@@ -14,12 +14,21 @@ export interface PartitionData {
   partitions: Record<string, string>[];
 }
 
+export interface LogEntry {
+  timestamp: string;
+  level: 'info' | 'warning' | 'error';
+  stage: string;
+  message: string;
+  details?: Record<string, any>;
+}
+
 export interface InsightsJob {
   jobId: string;
   status: 'running' | 'complete' | 'error';
   progress?: number;
   message?: string;
   insights?: InsightsData;
+  logs: LogEntry[];
 }
 
 export interface InsightsData {

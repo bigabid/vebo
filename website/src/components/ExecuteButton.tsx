@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Play, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { LogDisplay } from '@/components/LogDisplay';
 import { useStartInsights, useJobStatus } from '@/hooks/useAthenaApi';
 import { useToast } from '@/hooks/use-toast';
 
@@ -112,14 +112,13 @@ export function ExecuteButton({
           )}
         </div>
 
-        {isRunning && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Progress</span>
-              <span className="font-medium">{progress}%</span>
-            </div>
-            <Progress value={progress} className="h-2" />
-          </div>
+        {(isRunning || isComplete) && jobStatusQuery.data?.logs && (
+          <LogDisplay 
+            logs={jobStatusQuery.data.logs}
+            isRunning={isRunning}
+            maxHeight="300px"
+            className="mt-4"
+          />
         )}
 
         <Button

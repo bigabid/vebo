@@ -13,6 +13,7 @@ import time
 from .meta_rules import MetaRuleDetector, ColumnAttributes
 from .rule_engine import RuleEngine, RuleResult
 from .check_executor import CheckExecutor, ExecutionConfig
+from .logger import ProfilingLogger
 
 
 @dataclass
@@ -43,14 +44,16 @@ class VeboProfiler:
     Main profiler class that orchestrates the data profiling process.
     """
     
-    def __init__(self, config: ProfilingConfig = None):
+    def __init__(self, config: ProfilingConfig = None, logger: ProfilingLogger = None):
         """
         Initialize the profiler.
         
         Args:
             config: Profiling configuration
+            logger: Optional logger for capturing profiling progress
         """
         self.config = config or ProfilingConfig()
+        self.logger = logger or ProfilingLogger()
         self.meta_detector = MetaRuleDetector(seed=self.config.random_seed)
         self.rule_engine = RuleEngine()
         
@@ -65,6 +68,16 @@ class VeboProfiler:
         )
         
         self.check_executor = CheckExecutor(execution_config)
+        
+        self.logger.info(
+            stage="initialization",
+            message="VeboProfiler initialized",
+            details={
+                "deepness_level": self.config.deepness_level,
+                "cross_column_enabled": self.config.enable_cross_column,
+                "max_workers": self.config.max_workers
+            }
+        )
     
     def profile_dataframe(self, df: pd.DataFrame, filename: str = None) -> ProfilingResult:
         """
@@ -79,29 +92,111 @@ class VeboProfiler:
         """
         start_time = time.time()
         
+        self.logger.set_stage("data_preparation")
+        self.logger.info(
+            stage="data_preparation",
+            message=f"Starting data profiling for dataset with {len(df)} rows and {len(df.columns)} columns",
+            details={
+                "filename": filename,
+                "rows": len(df),
+                "columns": len(df.columns),
+                "memory_usage_mb": df.memory_usage(deep=True).sum() / 1024 / 1024
+            }
+        )
+        
         # Determine if sampling is needed
+        self.logger.set_stage("sampling_decision")
         if self.meta_detector.should_enable_sampling(df, self.config.sampling_threshold):
+            self.logger.info(
+                stage="sampling_decision",
+                message=f"Dataset size ({len(df)} rows) exceeds threshold ({self.config.sampling_threshold}), creating sample",
+                details={"original_size": len(df), "sample_size": self.config.sample_size}
+            )
             df_to_analyze = self.meta_detector.create_sample(df, self.config.sample_size)
             was_sampled = True
+            self.logger.info(
+                stage="sampling_decision",
+                message=f"Sample created with {len(df_to_analyze)} rows",
+                details={"sampled_rows": len(df_to_analyze)}
+            )
         else:
+            self.logger.info(
+                stage="sampling_decision",
+                message="No sampling needed, analyzing full dataset",
+                details={"rows": len(df)}
+            )
             df_to_analyze = df
             was_sampled = False
         
         # Analyze column attributes
+        self.logger.set_stage("column_analysis")
+        self.logger.info(
+            stage="column_analysis", 
+            message="Analyzing column attributes and data types"
+        )
         column_attributes = self.meta_detector.analyze_dataframe(df_to_analyze)
+        self.logger.info(
+            stage="column_analysis",
+            message=f"Completed column analysis for {len(column_attributes)} columns",
+            details={
+                "analyzed_columns": len(column_attributes),
+                "data_types": {col: attr.type_category.value for col, attr in list(column_attributes.items())[:5]}  # Show first 5
+            }
+        )
         
         # Execute column-level checks
+        self.logger.set_stage("column_checks")
+        self.logger.info(
+            stage="column_checks",
+            message="Executing column-level data quality checks"
+        )
         column_results = self._execute_column_checks(df_to_analyze, column_attributes)
+        total_column_checks = sum(len(results) for results in column_results.values())
+        self.logger.info(
+            stage="column_checks",
+            message=f"Completed {total_column_checks} column-level checks across {len(column_results)} columns",
+            details={"total_checks": total_column_checks, "columns_analyzed": len(column_results)}
+        )
         
         # Execute cross-column checks if enabled
         cross_column_results = []
         if self.config.enable_cross_column and self.config.deepness_level in ["standard", "deep"]:
+            self.logger.set_stage("cross_column_checks")
+            self.logger.info(
+                stage="cross_column_checks",
+                message="Executing cross-column relationship checks"
+            )
             cross_column_results = self._execute_cross_column_checks(df_to_analyze, column_attributes)
+            self.logger.info(
+                stage="cross_column_checks",
+                message=f"Completed {len(cross_column_results)} cross-column checks",
+                details={"cross_column_checks": len(cross_column_results)}
+            )
+        else:
+            self.logger.info(
+                stage="column_checks",
+                message="Cross-column checks skipped (disabled or basic deepness level)"
+            )
         
         # Execute table-level checks
+        self.logger.set_stage("table_checks")
+        self.logger.info(
+            stage="table_checks",
+            message="Executing table-level data quality checks"
+        )
         table_results = self._execute_table_checks(df_to_analyze, column_attributes)
+        self.logger.info(
+            stage="table_checks",
+            message=f"Completed {len(table_results)} table-level checks",
+            details={"table_checks": len(table_results)}
+        )
         
         # Compile results
+        self.logger.set_stage("results_compilation")
+        self.logger.info(
+            stage="results_compilation",
+            message="Compiling profiling results and generating report"
+        )
         end_time = time.time()
         duration = end_time - start_time
         
@@ -109,6 +204,16 @@ class VeboProfiler:
             df, df_to_analyze, filename, was_sampled, 
             column_attributes, column_results, cross_column_results, 
             table_results, start_time, end_time, duration
+        )
+        
+        self.logger.info(
+            stage="results_compilation",
+            message=f"Data profiling completed successfully in {duration:.2f} seconds",
+            details={
+                "total_duration": duration,
+                "was_sampled": was_sampled,
+                "total_checks": total_column_checks + len(cross_column_results) + len(table_results)
+            }
         )
         
         return result
