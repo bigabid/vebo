@@ -204,6 +204,39 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
         </div>
       </Card>
 
+      {/* Primary Key Candidates */}
+      {insights.primaryKeys && insights.primaryKeys.length > 0 && (
+        <Card className="p-5 bg-gradient-card border-0 shadow-soft">
+          <div className="mb-3">
+            <h3 className="text-lg font-semibold text-foreground">Primary key candidates</h3>
+            <p className="text-sm text-muted-foreground">Ranked by confidence, uniqueness and completeness</p>
+          </div>
+          <div className="space-y-2">
+            {insights.primaryKeys.slice(0, 5).map((ck, idx) => (
+              <div key={idx} className="flex items-center justify-between text-sm bg-background border border-border rounded-md px-3 py-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium truncate">{ck.columns.join(' + ')}</span>
+                  {ck.noNulls && (
+                    <Badge variant="outline" className="text-xs">no nulls</Badge>
+                  )}
+                  {typeof ck.confidence === 'number' && (
+                    <Badge variant="secondary" className="text-xs">conf {Math.round(ck.confidence * 100)}%</Badge>
+                  )}
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="font-semibold">{Math.round(ck.uniqueness * 100)}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {insights.primaryKeys[0].reason && (
+            <div className="mt-3 text-xs text-muted-foreground">
+              Reason: {insights.primaryKeys[0].reason}
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Summary Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard

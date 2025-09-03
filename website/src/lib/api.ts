@@ -32,6 +32,20 @@ export interface InsightsData {
     totalDistinct: number;
   };
   columns: ColumnInsight[];
+  candidateKeys?: Array<{
+    columns: string[];
+    uniqueness: number; // 0..1
+    noNulls: boolean;
+    confidence?: number; // 0..1
+    reason?: string;
+  }>;
+  primaryKeys?: Array<{
+    columns: string[];
+    uniqueness: number;
+    noNulls: boolean;
+    confidence: number;
+    reason?: string;
+  }>;
 }
 
 export interface ColumnInsight {
@@ -273,6 +287,8 @@ export const startInsightsJob = async (
     body: JSON.stringify({
       executionId,
       table: params.table,
+      catalog: params.catalog,
+      database: params.database,
       appliedFilters: params.partitions,
     }),
   });
