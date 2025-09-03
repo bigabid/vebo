@@ -233,6 +233,7 @@ def _compute_candidate_keys(df: pd.DataFrame, table: str, max_pair_columns: int 
         return {"score": max(0.0, min(1.0, score)), "hints": hints}
 
     # Single column uniqueness
+    single_col_candidates = []
     for col in df.columns:
         # Count distinct excluding NaN
         series = df[col]
@@ -245,19 +246,32 @@ def _compute_candidate_keys(df: pd.DataFrame, table: str, max_pair_columns: int 
         confidence = (uniqueness * 0.8 + (1.0 - null_ratio) * 0.2) + name_hint["score"]
         confidence = max(0.0, min(1.0, confidence))
         reason_bits = [f"uniqueness={uniqueness:.4f}", f"null_ratio={null_ratio:.4f}"] + name_hint["hints"]
-        candidates.append({
+        candidate = {
             "columns": [str(col)],
             "uniqueness": uniqueness,
             "noNulls": no_nulls,
             "confidence": confidence,
             "reason": "; ".join(reason_bits),
-        })
+        }
+        single_col_candidates.append(candidate)
+        candidates.append(candidate)
+
+    # Build lookup for single column confidences (threshold: 50%)
+    # Use a threshold of 0.5 for high confidence
+    single_col_confidence = {}
+    for candidate in single_col_candidates:
+        col_name = candidate["columns"][0]
+        if candidate["confidence"] >= 0.5:
+            single_col_confidence[col_name] = candidate["confidence"]
 
     # Pairwise uniqueness (limit number of columns to keep computation reasonable)
+    # Skip combinations only if their confidence <= single column confidence
     cols_for_pairs = list(df.columns)[:max_pair_columns]
     for i in range(len(cols_for_pairs)):
         for j in range(i + 1, len(cols_for_pairs)):
-            subset = [cols_for_pairs[i], cols_for_pairs[j]]
+            col1, col2 = cols_for_pairs[i], cols_for_pairs[j]
+            
+            subset = [col1, col2]
             distinct = len(df.drop_duplicates(subset=subset))
             null_ratio = float(df[subset].isna().any(axis=1).mean()) if len(df) else 0.0
             no_nulls = bool(null_ratio == 0.0)
@@ -265,6 +279,15 @@ def _compute_candidate_keys(df: pd.DataFrame, table: str, max_pair_columns: int 
             name_hint = _name_hint_score([str(subset[0]), str(subset[1])])
             confidence = (uniqueness * 0.8 + (1.0 - null_ratio) * 0.2) + name_hint["score"]
             confidence = max(0.0, min(1.0, confidence))
+            
+            # Skip combination only if it doesn't improve upon single column confidence
+            col1_confidence = single_col_confidence.get(str(col1), 0.0)
+            col2_confidence = single_col_confidence.get(str(col2), 0.0)
+            max_single_confidence = max(col1_confidence, col2_confidence)
+            
+            if max_single_confidence > 0 and confidence <= max_single_confidence:
+                continue
+                
             reason_bits = [f"uniqueness={uniqueness:.4f}", f"null_ratio={null_ratio:.4f}"] + name_hint["hints"]
             candidates.append({
                 "columns": [str(subset[0]), str(subset[1])],

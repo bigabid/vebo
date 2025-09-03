@@ -855,15 +855,65 @@ def check_functional_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[
                 requires_cross_column=True,
                 code_template="""
 def check_composite_uniqueness(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
-    dup_count = df.duplicated(subset=[col1, col2]).sum()
+    # Check if either column is 100% unique by itself
     total = len(df)
+    if total == 0:
+        return {
+            "duplicate_pairs": 0,
+            "unique_pair_ratio": 1.0,
+            "status": "passed",
+            "message": "Empty dataset"
+        }
+    
+    # Check individual column uniqueness
+    col1_unique_count = df[col1].nunique(dropna=True)
+    col2_unique_count = df[col2].nunique(dropna=True)
+    col1_non_null_count = len(df[col1].dropna())
+    col2_non_null_count = len(df[col2].dropna())
+    
+    col1_unique_ratio = col1_unique_count / col1_non_null_count if col1_non_null_count > 0 else 0
+    col2_unique_ratio = col2_unique_count / col2_non_null_count if col2_non_null_count > 0 else 0
+    
+    # Skip composite check if either column is 100% unique
+    if col1_unique_ratio == 1.0:
+        return {
+            "duplicate_pairs": 0,
+            "unique_pair_ratio": 1.0,
+            "status": "skipped",
+            "message": f"Skipped: {col1} is already 100% unique",
+            "skipped_reason": f"Column '{col1}' has 100% uniqueness",
+            "individual_uniqueness": {
+                "col1_unique_ratio": float(col1_unique_ratio),
+                "col2_unique_ratio": float(col2_unique_ratio)
+            }
+        }
+    
+    if col2_unique_ratio == 1.0:
+        return {
+            "duplicate_pairs": 0,
+            "unique_pair_ratio": 1.0,
+            "status": "skipped",
+            "message": f"Skipped: {col2} is already 100% unique",
+            "skipped_reason": f"Column '{col2}' has 100% uniqueness",
+            "individual_uniqueness": {
+                "col1_unique_ratio": float(col1_unique_ratio),
+                "col2_unique_ratio": float(col2_unique_ratio)
+            }
+        }
+    
+    # Proceed with normal composite uniqueness check
+    dup_count = df.duplicated(subset=[col1, col2]).sum()
     unique_ratio = 1.0 - (dup_count / total if total > 0 else 0)
     status = "passed" if dup_count == 0 else ("warning" if unique_ratio >= 0.99 else "failed")
     return {
         "duplicate_pairs": int(dup_count),
         "unique_pair_ratio": float(unique_ratio),
         "status": status,
-        "message": f"Unique pair ratio: {unique_ratio:.2%}"
+        "message": f"Unique pair ratio: {unique_ratio:.2%}",
+        "individual_uniqueness": {
+            "col1_unique_ratio": float(col1_unique_ratio),
+            "col2_unique_ratio": float(col2_unique_ratio)
+        }
     }
 """
             ),
