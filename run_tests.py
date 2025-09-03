@@ -29,6 +29,8 @@ def run_tests(test_type="all", verbose=False, coverage=True, parallel=False):
         cmd.append("tests/unit/")
     elif test_type == "integration":
         cmd.append("tests/integration/")
+    elif test_type == "e2e":
+        cmd.append("tests/e2e/")
     elif test_type == "all":
         cmd.append("tests/")
     else:
@@ -103,7 +105,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run Vebo profiler tests")
     parser.add_argument(
         "--type", 
-        choices=["unit", "integration", "all"], 
+        choices=["unit", "integration", "e2e", "all"], 
         default="all",
         help="Type of tests to run"
     )

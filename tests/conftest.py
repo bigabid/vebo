@@ -257,6 +257,7 @@ def pytest_configure(config):
     """Configure pytest with custom markers."""
     config.addinivalue_line("markers", "unit: Unit tests")
     config.addinivalue_line("markers", "integration: Integration tests")
+    config.addinivalue_line("markers", "e2e: End-to-end tests")
     config.addinivalue_line("markers", "slow: Slow running tests")
     config.addinivalue_line("markers", "performance: Performance tests")
 
@@ -269,7 +270,9 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.unit)
         elif "integration" in str(item.fspath):
             item.add_marker(pytest.mark.integration)
+        elif "e2e" in str(item.fspath):
+            item.add_marker(pytest.mark.e2e)
         
         # Add slow marker for tests that might take longer
-        if "performance" in item.name or "integration" in item.name:
+        if "performance" in item.name or "integration" in item.name or "e2e" in item.name:
             item.add_marker(pytest.mark.slow)
