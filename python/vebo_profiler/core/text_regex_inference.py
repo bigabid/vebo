@@ -114,9 +114,10 @@ class TextRegexInference:
         word_patterns = self._generate_word_patterns(clean_series)
         patterns.extend(word_patterns)
         
-        # Remove duplicates and sort by confidence
+        # Remove duplicates and adjust confidence based on pattern simplicity
         unique_patterns = self._deduplicate_patterns(patterns)
-        sorted_patterns = sorted(unique_patterns, key=lambda p: p.confidence, reverse=True)
+        patterns_with_adjusted_confidence = self._adjust_confidence_for_simplicity(unique_patterns)
+        sorted_patterns = sorted(patterns_with_adjusted_confidence, key=lambda p: p.confidence, reverse=True)
         
         return sorted_patterns[:max_patterns]
     
@@ -465,3 +466,80 @@ class TextRegexInference:
                 unique_patterns.append(pattern)
         
         return unique_patterns
+    
+    def _calculate_pattern_complexity(self, pattern: str) -> int:
+        """
+        Calculate pattern complexity score. Lower score = simpler pattern.
+        
+        Args:
+            pattern: Regex pattern string
+            
+        Returns:
+            Complexity score (lower is simpler)
+        """
+        complexity = 0
+        
+        # Count special regex characters
+        special_chars = ['+', '*', '?', '{', '}', '[', ']', '(', ')', '|', '^', '$', '.', '\\']
+        for char in special_chars:
+            complexity += pattern.count(char)
+        
+        # Length contributes to complexity
+        complexity += len(pattern) // 10  # Every 10 characters adds 1 to complexity
+        
+        # Character classes are simpler than explicit lists
+        if '[a-z]' in pattern.lower():
+            complexity -= 2
+        if '[a-za-z]' in pattern.lower():
+            complexity -= 1
+        if '[0-9]' in pattern or '\\d' in pattern:
+            complexity -= 2
+            
+        return max(0, complexity)
+    
+    def _adjust_confidence_for_simplicity(self, patterns: List[RegexPattern]) -> List[RegexPattern]:
+        """
+        Adjust pattern confidence to prefer simpler patterns when match ratios are similar.
+        
+        Args:
+            patterns: List of regex patterns
+            
+        Returns:
+            List of patterns with adjusted confidence scores
+        """
+        if not patterns:
+            return patterns
+        
+        # Group patterns by similar match ratios (within 0.05 difference)
+        ratio_groups = {}
+        for pattern in patterns:
+            ratio_key = round(pattern.match_ratio * 20) / 20  # Round to nearest 0.05
+            if ratio_key not in ratio_groups:
+                ratio_groups[ratio_key] = []
+            ratio_groups[ratio_key].append(pattern)
+        
+        adjusted_patterns = []
+        for ratio_key, group in ratio_groups.items():
+            if len(group) > 1:
+                # Multiple patterns with similar match ratios - adjust for simplicity
+                complexities = [(pattern, self._calculate_pattern_complexity(pattern.pattern)) for pattern in group]
+                min_complexity = min(complexity for _, complexity in complexities)
+                
+                for pattern, complexity in complexities:
+                    # Boost confidence for simpler patterns
+                    simplicity_bonus = max(0, (min_complexity + 3 - complexity) * 2)  # Up to 6 point bonus
+                    new_confidence = min(99.5, pattern.confidence + simplicity_bonus)
+                    
+                    adjusted_patterns.append(RegexPattern(
+                        pattern=pattern.pattern,
+                        description=pattern.description,
+                        match_count=pattern.match_count,
+                        match_ratio=pattern.match_ratio,
+                        confidence=new_confidence,
+                        examples=pattern.examples
+                    ))
+            else:
+                # Single pattern in this ratio group - keep as is
+                adjusted_patterns.extend(group)
+        
+        return adjusted_patterns

@@ -238,6 +238,25 @@ def _map_profiler_to_insights(table: str, applied_filters: Dict[str, list], df: 
         if basic:
             col_info["basic"] = basic
 
+        # Text patterns (from text_patterns rule)
+        text_patterns_check = checks_by_id.get("text_patterns") or {}
+        if isinstance(text_patterns_check.get("details"), dict):
+            patterns_data = text_patterns_check["details"]
+            
+            # Handle both old format (patterns) and new format (basic_patterns, inferred_patterns)
+            basic_patterns = patterns_data.get("basic_patterns") or patterns_data.get("patterns", {})
+            inferred_patterns = patterns_data.get("inferred_patterns", [])
+            
+            # Only add textPatterns if there's meaningful data
+            if basic_patterns or inferred_patterns:
+                text_patterns = {
+                    "basic_patterns": basic_patterns,
+                    "inferred_patterns": inferred_patterns,
+                    "status": text_patterns_check.get("status", "unknown"),
+                    "message": text_patterns_check.get("message", "")
+                }
+                col_info["textPatterns"] = text_patterns
+
         columns.append(col_info)
 
     insights = {

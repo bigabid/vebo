@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BarChart, TrendingUp, Database, Calendar, Hash, Type, AlertCircle, Filter, Code, Copy } from 'lucide-react';
+import { BarChart, TrendingUp, Database, Calendar, Hash, Type, AlertCircle, Filter, Code, Copy, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -7,8 +7,143 @@ import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import type { InsightsData, ColumnInsight, TextPattern } from '@/lib/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+// Column filter component for filtering by value type and data type
+function ColumnFilter({
+  selectedValueTypes,
+  selectedDataTypes,
+  onValueTypeChange,
+  onDataTypeChange,
+  columns
+}: {
+  selectedValueTypes: Set<string>;
+  selectedDataTypes: Set<string>;
+  onValueTypeChange: (types: Set<string>) => void;
+  onDataTypeChange: (types: Set<string>) => void;
+  columns: ColumnInsight[];
+}) {
+  // Extract unique value types and data types from columns
+  const valueTypeOptions = Array.from(new Set(
+    columns.map(col => col.valueType).filter(Boolean)
+  )).map(type => ({
+    value: type!,
+    label: type!.charAt(0).toUpperCase() + type!.slice(1),
+    color: type === 'categorical' ? 'text-blue-600' : 'text-green-600'
+  }));
+
+  const dataTypeOptions = Array.from(new Set(
+    columns.map(col => col.type)
+  )).map(type => ({
+    value: type,
+    label: type.charAt(0).toUpperCase() + type.slice(1),
+    color: 'text-gray-600'
+  }));
+
+  const handleValueTypeToggle = (type: string, checked: boolean) => {
+    const newTypes = new Set(selectedValueTypes);
+    if (checked) {
+      newTypes.add(type);
+    } else {
+      newTypes.delete(type);
+    }
+    onValueTypeChange(newTypes);
+  };
+
+  const handleDataTypeToggle = (type: string, checked: boolean) => {
+    const newTypes = new Set(selectedDataTypes);
+    if (checked) {
+      newTypes.add(type);
+    } else {
+      newTypes.delete(type);
+    }
+    onDataTypeChange(newTypes);
+  };
+
+  const valueTypeCount = selectedValueTypes.size;
+  const dataTypeCount = selectedDataTypes.size;
+  const totalFilters = valueTypeCount + dataTypeCount;
+
+  return (
+    <div className="flex gap-2">
+      {/* Value Type Filter */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-2">
+            <Filter className="w-3 h-3" />
+            Value Type
+            {valueTypeCount > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                {valueTypeCount}
+              </Badge>
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-48 p-3" align="end">
+          <div className="space-y-2">
+            <h4 className="font-medium text-sm">Value Type</h4>
+            {valueTypeOptions.map((option) => (
+              <div key={option.value} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`value-type-${option.value}`}
+                  checked={selectedValueTypes.has(option.value)}
+                  onCheckedChange={(checked) => 
+                    handleValueTypeToggle(option.value, checked as boolean)
+                  }
+                />
+                <label
+                  htmlFor={`value-type-${option.value}`}
+                  className={`text-sm cursor-pointer ${option.color}`}
+                >
+                  {option.label}
+                </label>
+              </div>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      {/* Data Type Filter */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-2">
+            <Type className="w-3 h-3" />
+            Data Type
+            {dataTypeCount > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                {dataTypeCount}
+              </Badge>
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-48 p-3" align="end">
+          <div className="space-y-2">
+            <h4 className="font-medium text-sm">Data Type</h4>
+            {dataTypeOptions.map((option) => (
+              <div key={option.value} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`data-type-${option.value}`}
+                  checked={selectedDataTypes.has(option.value)}
+                  onCheckedChange={(checked) => 
+                    handleDataTypeToggle(option.value, checked as boolean)
+                  }
+                />
+                <label
+                  htmlFor={`data-type-${option.value}`}
+                  className={`text-sm cursor-pointer ${option.color}`}
+                >
+                  {option.label}
+                </label>
+              </div>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
 
 // Status filter component for cross-column results
 function StatusFilter({ 
@@ -290,13 +425,16 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
         )}
 
         {column.topValues && (
-          <div className="space-y-2">
-            <h5 className="text-sm font-medium text-foreground flex items-center gap-1">
-              <BarChart className="w-3 h-3" />
-              Top Values
-              <span className="text-xs text-muted-foreground font-normal">(non-null)</span>
-            </h5>
-            <div className="space-y-1">
+          <Collapsible defaultOpen={false}>
+            <div className="space-y-2">
+              <CollapsibleTrigger className="flex items-center gap-1 text-sm font-medium text-foreground hover:text-foreground/80 w-full justify-start">
+                <ChevronRight className="w-3 h-3 transition-transform duration-200 data-[state=open]:rotate-90" />
+                <BarChart className="w-3 h-3" />
+                Top Values
+                <span className="text-xs text-muted-foreground font-normal">(non-null)</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="space-y-1 mt-2">
               {column.topValues.slice(0, 3).map((item, index) => (
                 <div key={index} className="flex items-center justify-between text-sm">
                   <span className="text-foreground truncate flex-1 mr-2">{item.value}</span>
@@ -310,8 +448,10 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
                   +{column.topValues.length - 3} more values
                 </div>
               )}
+                </div>
+              </CollapsibleContent>
             </div>
-          </div>
+          </Collapsible>
         )}
 
         {/* Constant column indicator */}
@@ -383,6 +523,16 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
 export function InsightsPanel({ insights }: InsightsPanelProps) {
   // State for cross-column status filtering - default to showing only 'high' status
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set(['high']));
+  
+  // Initialize column filters with all available types checked by default
+  const [selectedValueTypes, setSelectedValueTypes] = useState<Set<string>>(() => {
+    if (!insights?.columns) return new Set();
+    return new Set(insights.columns.map(col => col.valueType).filter(Boolean) as string[]);
+  });
+  const [selectedDataTypes, setSelectedDataTypes] = useState<Set<string>>(() => {
+    if (!insights?.columns) return new Set();
+    return new Set(insights.columns.map(col => col.type));
+  });
 
   if (!insights) {
     return (
@@ -492,15 +642,65 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
         </TabsList>
         <TabsContent value="columns" className="mt-4">
           <div>
-            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-              <Type className="w-5 h-5" />
-              Column Analysis
-            </h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {insights.columns.map((column, index) => (
-                <ColumnInsightCard key={index} column={column} />
-              ))}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Type className="w-5 h-5" />
+                Column Analysis
+              </h3>
+              <ColumnFilter
+                selectedValueTypes={selectedValueTypes}
+                selectedDataTypes={selectedDataTypes}
+                onValueTypeChange={setSelectedValueTypes}
+                onDataTypeChange={setSelectedDataTypes}
+                columns={insights.columns}
+              />
             </div>
+            {(() => {
+              // Filter columns based on selected value types and data types
+              const filteredColumns = insights.columns.filter(column => {
+                // Apply value type filter (if any selected)
+                const valueTypeMatch = selectedValueTypes.size === 0 || 
+                  (column.valueType && selectedValueTypes.has(column.valueType));
+                
+                // Apply data type filter (if any selected)
+                const dataTypeMatch = selectedDataTypes.size === 0 || 
+                  selectedDataTypes.has(column.type);
+                
+                return valueTypeMatch && dataTypeMatch;
+              });
+              
+              const totalColumns = insights.columns.length;
+              const filteredOutCount = totalColumns - filteredColumns.length;
+              
+              return filteredColumns.length === 0 ? (
+                <div className="text-sm text-muted-foreground text-center py-8">
+                  {totalColumns > 0 ? (
+                    <>
+                      No columns match the selected filters.
+                      {filteredOutCount > 0 && (
+                        <> {filteredOutCount} column{filteredOutCount > 1 ? 's' : ''} hidden by filters.</>
+                      )}
+                    </>
+                  ) : (
+                    'No column data available.'
+                  )}
+                </div>
+              ) : (
+                <>
+                  {filteredOutCount > 0 && (
+                    <div className="text-xs text-muted-foreground mb-3">
+                      Showing {filteredColumns.length} of {totalColumns} columns
+                      {filteredOutCount > 0 && ` (${filteredOutCount} filtered out)`}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {filteredColumns.map((column, index) => (
+                      <ColumnInsightCard key={index} column={column} />
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </TabsContent>
         <TabsContent value="cross" className="mt-4">
@@ -601,11 +801,14 @@ function TextPatternsSection({ textPatterns }: { textPatterns: any }) {
   }
 
   return (
-    <div className="space-y-3">
-      <h5 className="text-sm font-medium text-foreground flex items-center gap-1">
-        <Code className="w-3 h-3" />
-        Text Patterns
-      </h5>
+    <Collapsible defaultOpen={false}>
+      <div className="space-y-3">
+        <CollapsibleTrigger className="flex items-center gap-1 text-sm font-medium text-foreground hover:text-foreground/80 w-full justify-start">
+          <ChevronRight className="w-3 h-3 transition-transform duration-200 data-[state=open]:rotate-90" />
+          <Code className="w-3 h-3" />
+          Text Patterns
+        </CollapsibleTrigger>
+        <CollapsibleContent>
       
       {/* Basic Patterns */}
       {hasBasicPatterns && (
@@ -693,6 +896,8 @@ function TextPatternsSection({ textPatterns }: { textPatterns: any }) {
           </div>
         </div>
       )}
-    </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
   );
 }

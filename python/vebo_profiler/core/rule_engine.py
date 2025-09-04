@@ -714,7 +714,7 @@ def check_whitespace_encoding_checks(series: pd.Series) -> Dict[str, Any]:
                 description="Analyze common text patterns",
                 category="text_patterns",
                 column_types=["textual"],
-                diversity_levels=["low", "medium", "high", "distinctive", "fully_unique"],
+                diversity_levels=["medium", "high", "distinctive", "fully_unique"],  # Skip low diversity
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_text_patterns(series: pd.Series) -> Dict[str, Any]:
@@ -724,10 +724,7 @@ def check_text_patterns(series: pd.Series) -> Dict[str, Any]:
     
     string_series = series.astype(str)
     
-    # Use the new regex inference system
-    inferred_patterns = regex_engine.infer_patterns(string_series, max_patterns=3)
-    
-    # Also check for the original basic patterns for backward compatibility
+    # Check for the basic patterns first
     email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     phone_pattern = r'^\+?[\d\s\-\(\)]{10,}$'
     url_pattern = r'^https?://[^\s/$\.?#]\.[^\s]*$'
@@ -747,23 +744,37 @@ def check_text_patterns(series: pd.Series) -> Dict[str, Any]:
         "url_like": {"count": url_matches, "ratio": url_matches / total_non_null if total_non_null > 0 else 0}
     }
     
-    # Convert inferred patterns to the expected format
+    # Check if any known pattern matches most of the data (>80%)
+    # If so, skip expensive regex inference
+    skip_regex_inference = False
+    max_known_ratio = max(basic_patterns[pattern]["ratio"] for pattern in basic_patterns)
+    if max_known_ratio > 0.8:
+        skip_regex_inference = True
+        skip_reason = "Known pattern detected with high confidence"
+    
     inferred_pattern_data = []
-    for pattern in inferred_patterns:
-        inferred_pattern_data.append({
-            "regex": pattern.pattern,
-            "description": pattern.description,
-            "match_count": pattern.match_count,
-            "match_ratio": pattern.match_ratio,
-            "confidence": pattern.confidence,
-            "examples": pattern.examples
-        })
+    if not skip_regex_inference:
+        # Use the regex inference system only if no known patterns dominate
+        inferred_patterns = regex_engine.infer_patterns(string_series, max_patterns=3)
+        for pattern in inferred_patterns:
+            inferred_pattern_data.append({
+                "regex": pattern.pattern,
+                "description": pattern.description,
+                "match_count": pattern.match_count,
+                "match_ratio": pattern.match_ratio,
+                "confidence": pattern.confidence,
+                "examples": pattern.examples
+            })
+    
+    message = f"Text pattern analysis completed. Found {len(inferred_pattern_data)} inferred patterns."
+    if skip_regex_inference:
+        message += f" Skipped regex inference: {skip_reason}."
     
     return {
         "basic_patterns": basic_patterns,
         "inferred_patterns": inferred_pattern_data,
         "status": "passed",
-        "message": f"Text pattern analysis completed. Found {len(inferred_patterns)} inferred patterns."
+        "message": message
     }
 """
             )
