@@ -63,14 +63,31 @@ class VeboProfiler:
         else:
             print("VeboProfiler: Creating new logger")
         
-        # Create execution config
+        # Create execution config with performance optimizations
         execution_config = ExecutionConfig(
             enable_cross_column=self.config.enable_cross_column,
             max_workers=self.config.max_workers,
             timeout_seconds=self.config.timeout_seconds,
             enable_parallel=True,
             sample_size=self.config.sample_size,
-            sampling_threshold=self.config.sampling_threshold
+            sampling_threshold=self.config.sampling_threshold,
+            # COLUMN-BASED OPTIMIZATIONS
+            max_cross_column_pairs=1000,  # Reasonable limit for wide tables
+            enable_smart_filtering=True,  # Enable type-based rule filtering
+            enable_early_exit=True,  # Enable early exit strategies
+            # ROW-BASED OPTIMIZATIONS - CRITICAL FOR LARGE DATASETS
+            enable_adaptive_sampling=True,  # Use rule-specific sample sizes
+            cross_column_sample_threshold=50000,  # Apply row sampling above this size
+            correlation_sample_size=5000,  # Correlation: 5K rows for stable results
+            functional_dep_sample_size=10000,  # Functional dependency: 10K for category coverage
+            missingness_sample_size=20000,  # Missingness: 20K for pattern detection
+            enable_statistical_confidence=True,  # Use statistical confidence intervals
+            # TWO-STAGE PROCESSING OPTIMIZATIONS - REVOLUTIONARY PERFORMANCE GAINS
+            enable_two_stage_processing=True,  # Enable two-stage pattern discovery
+            pattern_discovery_sample_size=5000,  # Stage 1: Pattern discovery sample size
+            heavy_rule_threshold=25000,  # Apply two-stage processing above this size
+            regex_discovery_sample_size=2000,  # Regex pattern discovery sample
+            outlier_discovery_sample_size=3000  # Outlier threshold discovery sample
         )
         
         self.check_executor = CheckExecutor(execution_config)
@@ -341,49 +358,160 @@ class VeboProfiler:
     def _generate_column_pairs(self, df: pd.DataFrame, 
                              column_attributes: Dict[str, ColumnAttributes]) -> List[tuple]:
         """
-        Generate column pairs for cross-column analysis.
-        Skips pairs where:
-        - One column is constant (has only one unique value)
-        - One column has all nulls 
-        - Duplicate combinations (already handled by i+1 indexing)
+        Generate optimized column pairs for cross-column analysis.
+        
+        PERFORMANCE OPTIMIZATIONS:
+        - Smart filtering by column compatibility
+        - Limits on very wide tables 
+        - Type-based pre-filtering
+        - Early rejection of incompatible pairs
         
         Args:
             df: DataFrame to analyze
             column_attributes: Column attributes
             
         Returns:
-            List of column pairs
+            List of column pairs optimized for cross-column rules
         """
-        from .meta_rules import DiversityLevel
+        from .meta_rules import DiversityLevel, TypeCategory
+        import random
         
-        column_pairs = []
         columns = list(df.columns)
+        column_pairs = []
         
-        # Generate all possible pairs
-        for i in range(len(columns)):
-            for j in range(i + 1, len(columns)):
-                col1, col2 = columns[i], columns[j]
+        # OPTIMIZATION 1: Limit pairs for very wide tables  
+        max_pairs = getattr(self.config, 'max_cross_column_pairs', 1000)  # Use config or default
+        total_possible_pairs = len(columns) * (len(columns) - 1) // 2
+        
+        if len(columns) > 30:  # For wide tables, use sampling strategy
+            self.logger.info(
+                stage="cross_column_analysis",
+                message=f"Wide table detected ({len(columns)} columns). Applying smart pair selection.",
+                details={
+                    "columns": len(columns), 
+                    "max_pairs": max_pairs,
+                    "total_possible_pairs": total_possible_pairs
+                }
+            )
+        
+        # OPTIMIZATION 2: Pre-categorize columns for efficient filtering
+        numeric_cols = []
+        categorical_cols = []
+        high_diversity_cols = []
+        
+        for col in columns:
+            attr = column_attributes.get(col)
+            if not attr:
+                continue
                 
-                # Check if both columns have sufficient data
-                attr1 = column_attributes.get(col1)
-                attr2 = column_attributes.get(col2)
+            # Skip problematic columns early
+            if (attr.diversity_level == DiversityLevel.CONSTANT or
+                attr.null_count == attr.total_count):
+                continue
                 
-                if attr1 and attr2:
-                    # Skip if either column is constant (only one unique value)
-                    if (attr1.diversity_level == DiversityLevel.CONSTANT or 
-                        attr2.diversity_level == DiversityLevel.CONSTANT):
-                        continue
-                    
-                    # Skip if either column has all nulls
-                    if (attr1.null_count == attr1.total_count or 
-                        attr2.null_count == attr2.total_count):
-                        continue
-                    
-                    # Only include pairs where both columns have some meaningful data
-                    if attr1.null_count < attr1.total_count and attr2.null_count < attr2.total_count:
-                        column_pairs.append((col1, col2))
+            if attr.type_category == TypeCategory.NUMERIC:
+                numeric_cols.append((col, attr))
+            elif attr.diversity_level in [DiversityLevel.HIGH, DiversityLevel.DISTINCTIVE]:
+                high_diversity_cols.append((col, attr))
+            else:
+                categorical_cols.append((col, attr))
+        
+        # OPTIMIZATION 3: Generate pairs with type compatibility in mind
+        prioritized_pairs = []
+        
+        # High priority: Numeric-Numeric pairs (for correlation)
+        for i, (col1, attr1) in enumerate(numeric_cols):
+            for col2, attr2 in numeric_cols[i+1:]:
+                prioritized_pairs.append(((col1, col2), 'high'))  # High priority
+        
+        # Medium priority: Categorical-Categorical pairs (for functional deps)
+        for i, (col1, attr1) in enumerate(categorical_cols):
+            for col2, attr2 in categorical_cols[i+1:]:
+                if self._are_columns_compatible_for_analysis(attr1, attr2):
+                    prioritized_pairs.append(((col1, col2), 'medium'))
+        
+        # Lower priority: Mixed type pairs (limited analysis)
+        all_cols = numeric_cols + categorical_cols + high_diversity_cols
+        for i, (col1, attr1) in enumerate(all_cols):
+            for col2, attr2 in all_cols[i+1:]:
+                pair = (col1, col2)
+                if pair not in [p[0] for p in prioritized_pairs]:
+                    if self._are_columns_compatible_for_analysis(attr1, attr2):
+                        prioritized_pairs.append((pair, 'low'))
+        
+        # OPTIMIZATION 4: Apply limits and prioritization
+        if len(prioritized_pairs) > max_pairs:
+            # Sort by priority and take top pairs
+            priority_order = {'high': 0, 'medium': 1, 'low': 2}
+            prioritized_pairs.sort(key=lambda x: priority_order[x[1]])
+            prioritized_pairs = prioritized_pairs[:max_pairs]
+            
+            self.logger.info(
+                stage="cross_column_analysis",
+                message=f"Limited to {max_pairs} most promising column pairs",
+                details={
+                    "total_possible": len(columns) * (len(columns) - 1) // 2,
+                    "selected": max_pairs,
+                    "reduction_ratio": max_pairs / (len(columns) * (len(columns) - 1) // 2)
+                }
+            )
+        
+        column_pairs = [pair[0] for pair in prioritized_pairs]
+        
+        # OPTIMIZATION LOG: Show the pair reduction achieved
+        pair_reduction = (total_possible_pairs - len(column_pairs)) / total_possible_pairs * 100
+        
+        self.logger.info(
+            stage="cross_column_analysis",
+            message=f"Column pair optimization complete",
+            details={
+                "total_possible_pairs": total_possible_pairs,
+                "selected_pairs": len(column_pairs), 
+                "pair_reduction_percent": pair_reduction,
+                "optimization_ratio": f"{len(column_pairs)}/{total_possible_pairs}"
+            }
+        )
         
         return column_pairs
+    
+    def _are_columns_compatible_for_analysis(self, attr1: 'ColumnAttributes', attr2: 'ColumnAttributes') -> bool:
+        """
+        Check if two columns are compatible for cross-column analysis.
+        
+        Args:
+            attr1: First column attributes
+            attr2: Second column attributes
+            
+        Returns:
+            True if columns are worth analyzing together
+        """
+        from .meta_rules import DiversityLevel, TypeCategory
+        
+        # Skip if diversity levels are too different (unlikely to have meaningful relationships)
+        diversity_levels = [DiversityLevel.CONSTANT, DiversityLevel.BINARY, DiversityLevel.LOW, 
+                          DiversityLevel.MEDIUM, DiversityLevel.HIGH, DiversityLevel.DISTINCTIVE, 
+                          DiversityLevel.FULLY_UNIQUE]
+        
+        # Handle case where diversity level is not in our list (defensive programming)
+        try:
+            attr1_idx = diversity_levels.index(attr1.diversity_level)
+            attr2_idx = diversity_levels.index(attr2.diversity_level)
+        except ValueError:
+            # If we encounter an unknown diversity level, be conservative and allow analysis
+            return True
+        
+        # Skip if diversity difference is too large (e.g., constant vs high diversity)
+        if abs(attr1_idx - attr2_idx) > 3:
+            return False
+            
+        # Skip if both columns have very high null rates (> 80%)
+        null_rate1 = attr1.null_count / attr1.total_count if attr1.total_count > 0 else 1
+        null_rate2 = attr2.null_count / attr2.total_count if attr2.total_count > 0 else 1
+        
+        if null_rate1 > 0.8 and null_rate2 > 0.8:
+            return False
+            
+        return True
     
     def _compile_results(self, original_df: pd.DataFrame, analyzed_df: pd.DataFrame, 
                         filename: str, was_sampled: bool, column_attributes: Dict[str, ColumnAttributes],

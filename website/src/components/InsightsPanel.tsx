@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BarChart, TrendingUp, Database, Calendar, Hash, Type, AlertCircle, Filter, Code, Copy, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -534,6 +534,21 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
     return new Set(insights.columns.map(col => col.type));
   });
 
+  // Reinitialize filters when insights data changes to ensure all types are checked by default
+  useEffect(() => {
+    if (insights?.columns) {
+      // Set all available value types as selected
+      const availableValueTypes = new Set(
+        insights.columns.map(col => col.valueType).filter(Boolean) as string[]
+      );
+      setSelectedValueTypes(availableValueTypes);
+
+      // Set all available data types as selected  
+      const availableDataTypes = new Set(insights.columns.map(col => col.type));
+      setSelectedDataTypes(availableDataTypes);
+    }
+  }, [insights]);
+
   if (!insights) {
     return (
       <Card className="p-8 bg-gradient-card border-0 shadow-soft">
@@ -649,18 +664,19 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
               />
             </div>
             {(() => {
-              // Filter columns based on selected value types and data types
-              const filteredColumns = insights.columns.filter(column => {
-                // Apply value type filter (if any selected)
-                const valueTypeMatch = selectedValueTypes.size === 0 || 
-                  (column.valueType && selectedValueTypes.has(column.valueType));
-                
-                // Apply data type filter (if any selected)
-                const dataTypeMatch = selectedDataTypes.size === 0 || 
-                  selectedDataTypes.has(column.type);
-                
-                return valueTypeMatch && dataTypeMatch;
-              });
+              // If EITHER filter has no selections, show no results
+              const filteredColumns = (selectedValueTypes.size === 0 || selectedDataTypes.size === 0) 
+                ? [] 
+                : insights.columns.filter(column => {
+                    // Value type filter: if column has no valueType, it passes the filter
+                    // Otherwise it must be in the selected value types
+                    const valueTypeMatch = !column.valueType || selectedValueTypes.has(column.valueType);
+                    
+                    // Data type filter: must be in selected data types
+                    const dataTypeMatch = selectedDataTypes.has(column.type);
+                    
+                    return valueTypeMatch && dataTypeMatch;
+                  });
               
               const totalColumns = insights.columns.length;
               const filteredOutCount = totalColumns - filteredColumns.length;
