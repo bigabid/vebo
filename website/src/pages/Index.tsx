@@ -14,10 +14,10 @@ import { DatabaseSelector } from '@/components/DatabaseSelector';
 const queryClient = new QueryClient();
 
 function AthenaExplorer() {
-  const [selectedDataSource, setSelectedDataSource] = useState<string | null>(null);
-  const [selectedCatalog, setSelectedCatalog] = useState<string | null>(null);
-  const [selectedDatabase, setSelectedDatabase] = useState<string | null>(null);
-  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [selectedDataSource, setSelectedDataSource] = useState<string | null>('AwsDataCatalog');
+  const [selectedCatalog, setSelectedCatalog] = useState<string | null>('AwsDataCatalog');
+  const [selectedDatabase, setSelectedDatabase] = useState<string | null>('bi_etl');
+  const [selectedTable, setSelectedTable] = useState<string | null>('accounts');
   const [selectedPartitions, setSelectedPartitions] = useState<Record<string, string[]>>({});
   const [currentInsights, setCurrentInsights] = useState<InsightsData | null>(null);
 

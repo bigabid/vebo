@@ -165,16 +165,24 @@ function StatCard({
 
 function ColumnInsightCard({ column }: { column: ColumnInsight }) {
   const getTypeIcon = (type: string) => {
-    if (type.includes('string') || type.includes('varchar')) return Type;
-    if (type.includes('int') || type.includes('double') || type.includes('decimal')) return Hash;
-    if (type.includes('timestamp') || type.includes('date')) return Calendar;
-    return Database;
+    if (type.includes('string') || type.includes('varchar') || type === 'textual') return Type;
+    if (type.includes('int') || type.includes('double') || type.includes('decimal') || type === 'numeric') return Hash;
+    if (type.includes('timestamp') || type.includes('date') || type === 'temporal') return Calendar;
+    if (type === 'array') return BarChart;
+    if (type === 'dictionary') return Database;
+    if (type === 'boolean') return TrendingUp;
+    if (type === 'categorical') return Type;
+    return AlertCircle;
   };
 
   const getTypeColor = (type: string) => {
-    if (type.includes('string') || type.includes('varchar')) return 'secondary';
-    if (type.includes('int') || type.includes('double') || type.includes('decimal')) return 'primary';
-    if (type.includes('timestamp') || type.includes('date')) return 'success';
+    if (type.includes('string') || type.includes('varchar') || type === 'textual') return 'secondary';
+    if (type.includes('int') || type.includes('double') || type.includes('decimal') || type === 'numeric') return 'primary';
+    if (type.includes('timestamp') || type.includes('date') || type === 'temporal') return 'success';
+    if (type === 'array') return 'warning';
+    if (type === 'dictionary') return 'muted';
+    if (type === 'boolean') return 'success';
+    if (type === 'categorical') return 'secondary';
     return 'muted';
   };
 
@@ -229,19 +237,35 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
               <TrendingUp className="w-3 h-3" />
               Numeric Statistics
             </h5>
-            <div className="grid grid-cols-3 gap-3 text-sm">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {!column.basic?.isConstantColumn && (
+                <>
+                  <div>
+                    <span className="text-muted-foreground block">Min</span>
+                    <span className="font-medium">{formatNumber(column.numeric.min)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block">Max</span>
+                    <span className="font-medium">{formatNumber(column.numeric.max)}</span>
+                  </div>
+                </>
+              )}
               <div>
-                <span className="text-muted-foreground block">Min</span>
-                <span className="font-medium">{formatNumber(column.numeric.min)}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block">Avg</span>
+                <span className="text-muted-foreground block">{column.basic?.isConstantColumn ? 'Value' : 'Avg'}</span>
                 <span className="font-medium">{formatNumber(column.numeric.avg)}</span>
               </div>
-              <div>
-                <span className="text-muted-foreground block">Max</span>
-                <span className="font-medium">{formatNumber(column.numeric.max)}</span>
-              </div>
+              {column.numeric.median !== undefined && !column.basic?.isConstantColumn && (
+                <div>
+                  <span className="text-muted-foreground block">Median</span>
+                  <span className="font-medium">{formatNumber(column.numeric.median)}</span>
+                </div>
+              )}
+              {column.numeric.std !== undefined && column.numeric.std > 0 && (
+                <div>
+                  <span className="text-muted-foreground block">Std Dev</span>
+                  <span className="font-medium">{formatNumber(column.numeric.std)}</span>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -270,6 +294,7 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
             <h5 className="text-sm font-medium text-foreground flex items-center gap-1">
               <BarChart className="w-3 h-3" />
               Top Values
+              <span className="text-xs text-muted-foreground font-normal">(non-null)</span>
             </h5>
             <div className="space-y-1">
               {column.topValues.slice(0, 3).map((item, index) => (
@@ -289,33 +314,29 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
           </div>
         )}
 
+        {/* Constant column indicator */}
+        {column.basic?.isConstantColumn && (
+          <div className="bg-muted/50 p-2 rounded text-sm">
+            <span className="text-muted-foreground">🔒 Constant Column</span>
+            <div className="text-xs text-muted-foreground mt-1">All non-null values are identical</div>
+          </div>
+        )}
+
         {/* Additional basic details */}
         {column.basic && (
           <div className="space-y-2">
             <h5 className="text-sm font-medium text-foreground">Details</h5>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {typeof column.basic.uniqueCount !== 'undefined' && (
+              {typeof column.basic.uniqueCount !== 'undefined' && !column.basic.isConstantColumn && (
                 <div>
                   <span className="text-muted-foreground block">Unique Count</span>
                   <span className="font-medium">{formatNumber(column.basic.uniqueCount)}</span>
                 </div>
               )}
-              {typeof column.basic.uniqueRatio !== 'undefined' && (
+              {typeof column.basic.uniqueRatio !== 'undefined' && !column.basic.isConstantColumn && (
                 <div>
                   <span className="text-muted-foreground block">Unique Ratio</span>
                   <span className="font-medium">{Math.round((column.basic.uniqueRatio || 0) * 100)}%</span>
-                </div>
-              )}
-              {typeof column.basic.duplicateCount !== 'undefined' && (
-                <div>
-                  <span className="text-muted-foreground block">Duplicate Count</span>
-                  <span className="font-medium">{formatNumber(column.basic.duplicateCount)}</span>
-                </div>
-              )}
-              {typeof column.basic.duplicateRatio !== 'undefined' && (
-                <div>
-                  <span className="text-muted-foreground block">Duplicate Ratio</span>
-                  <span className="font-medium">{Math.round((column.basic.duplicateRatio || 0) * 100)}%</span>
                 </div>
               )}
               {typeof column.basic.nullCount !== 'undefined' && (
@@ -324,12 +345,22 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
                   <span className="font-medium">{formatNumber(column.basic.nullCount)}</span>
                 </div>
               )}
-              {typeof column.basic.mostCommonValue !== 'undefined' && (
+              {typeof column.basic.mostCommonValue !== 'undefined' && !column.basic.isConstantColumn && (
                 <div className="col-span-2">
-                  <span className="text-muted-foreground block">Most Common</span>
+                  <span className="text-muted-foreground block">
+                    Most Common
+                    {column.basic.mostCommonValueNote && (
+                      <span className="ml-1 text-xs">({column.basic.mostCommonValueNote})</span>
+                    )}
+                  </span>
                   <span className="font-medium break-words">{String(column.basic.mostCommonValue ?? '—')}</span>
                   {typeof column.basic.mostCommonFrequency !== 'undefined' && (
-                    <span className="ml-2 text-xs text-muted-foreground">({formatNumber(column.basic.mostCommonFrequency)})</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      ({formatNumber(column.basic.mostCommonFrequency)}
+                      {typeof column.basic.mostCommonFrequencyRatio !== 'undefined' && (
+                        <>, {Math.round((column.basic.mostCommonFrequencyRatio || 0) * 100)}%</>
+                      )})
+                    </span>
                   )}
                 </div>
               )}

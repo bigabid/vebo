@@ -73,7 +73,7 @@ export interface ColumnInsight {
   nullRatio: number;
   valueType?: 'categorical' | 'continuous';
   topValues?: { value: string; count: number }[];
-  numeric?: { min: number; max: number; avg: number };
+  numeric?: { min: number; max: number; avg: number; median?: number; std?: number };
   temporal?: { min: string; max: string };
   basic?: {
     uniqueCount?: number;

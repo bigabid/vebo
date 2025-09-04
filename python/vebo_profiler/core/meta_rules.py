@@ -4,6 +4,7 @@ Meta-rules for determining which rules are relevant based on data characteristic
 
 import pandas as pd
 import numpy as np
+import json
 from typing import Dict, List, Tuple, Any
 from dataclasses import dataclass
 from enum import Enum
@@ -17,6 +18,8 @@ class TypeCategory(Enum):
     BOOLEAN = "boolean"
     CATEGORICAL = "categorical"
     COLLECTION = "collection"
+    ARRAY = "array"
+    DICTIONARY = "dictionary"
     UNKNOWN = "unknown"
 
 
@@ -85,6 +88,72 @@ class MetaRuleDetector:
         self.seed = seed
         np.random.seed(seed)
     
+    def _parse_json_type(self, value: str) -> TypeCategory:
+        """
+        Try to parse a string as JSON and determine if it's an array or dictionary.
+        
+        Args:
+            value: String value to parse
+            
+        Returns:
+            TypeCategory.ARRAY, TypeCategory.DICTIONARY, or None if not parseable as JSON
+        """
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return TypeCategory.ARRAY
+            elif isinstance(parsed, dict):
+                return TypeCategory.DICTIONARY
+            else:
+                return None  # Other JSON types (string, number, boolean, null)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    
+    def _detect_json_type_in_series(self, series: pd.Series) -> TypeCategory:
+        """
+        Check if a textual series contains parseable JSON data.
+        
+        Args:
+            series: Pandas Series to analyze
+            
+        Returns:
+            TypeCategory.ARRAY, TypeCategory.DICTIONARY, or None if not JSON
+        """
+        non_null = series.dropna()
+        if len(non_null) == 0:
+            return None
+        
+        # Sample up to 100 values to check for JSON parsing
+        sample_size = min(100, len(non_null))
+        sample_values = non_null.head(sample_size)
+        
+        json_type_counts = {TypeCategory.ARRAY: 0, TypeCategory.DICTIONARY: 0, None: 0}
+        
+        for value in sample_values:
+            if not isinstance(value, str):
+                continue
+                
+            json_type = self._parse_json_type(value)
+            if json_type:
+                json_type_counts[json_type] += 1
+            else:
+                json_type_counts[None] += 1
+        
+        total_sampled = sum(json_type_counts.values())
+        if total_sampled == 0:
+            return None
+        
+        # If more than 80% of sampled values are parseable as the same JSON type, classify accordingly
+        array_ratio = json_type_counts[TypeCategory.ARRAY] / total_sampled
+        dict_ratio = json_type_counts[TypeCategory.DICTIONARY] / total_sampled
+        
+        if array_ratio > 0.8:
+            return TypeCategory.ARRAY
+        elif dict_ratio > 0.8:
+            return TypeCategory.DICTIONARY
+        else:
+            return None  # Mixed or insufficient JSON content
+    
     def detect_column_type_category(self, series: pd.Series) -> TypeCategory:
         """
         Detect the type category of a column.
@@ -99,8 +168,35 @@ class MetaRuleDetector:
         if pd.api.types.is_bool_dtype(series):
             return TypeCategory.BOOLEAN
         elif pd.api.types.is_numeric_dtype(series):
+            # Special handling for numeric columns: check if they are 100% unique integers
+            # These should be treated as categorical (like ID columns) rather than continuous
+            non_null = series.dropna()
+            if len(non_null) > 0:
+                unique_count = non_null.nunique()
+                total_count = len(non_null)
+                unique_ratio = unique_count / total_count if total_count > 0 else 0
+                
+                # Check if it's 100% unique and integer-like
+                if unique_ratio >= 0.99:  # Allow small floating point tolerance
+                    # Check if values are integer-like (no fractional parts)
+                    try:
+                        # Convert to numeric and check for fractional parts
+                        numeric_vals = pd.to_numeric(non_null, errors='coerce')
+                        numeric_vals = numeric_vals.dropna()
+                        if len(numeric_vals) > 0:
+                            # Check if all values are whole numbers (no fractional parts)
+                            is_integer_like = ((numeric_vals % 1) == 0).all()
+                            if is_integer_like:
+                                return TypeCategory.CATEGORICAL
+                    except Exception:
+                        pass  # Fall back to numeric if any error occurs
+            
             return TypeCategory.NUMERIC
         elif pd.api.types.is_string_dtype(series):
+            # Check if string data contains parseable JSON before classifying as textual
+            json_type = self._detect_json_type_in_series(series)
+            if json_type:
+                return json_type
             return TypeCategory.TEXTUAL
         elif pd.api.types.is_datetime64_any_dtype(series):
             return TypeCategory.TEMPORAL
@@ -114,6 +210,10 @@ class MetaRuleDetector:
                     return TypeCategory.UNKNOWN
                 sample = list(non_null.head(min(50, len(non_null))))
                 if all(isinstance(x, str) for x in sample):
+                    # Check if string data contains parseable JSON before classifying as textual
+                    json_type = self._detect_json_type_in_series(series)
+                    if json_type:
+                        return json_type
                     return TypeCategory.TEXTUAL
             return TypeCategory.UNKNOWN
     
@@ -298,6 +398,10 @@ class MetaRuleDetector:
             non_null = series.dropna()
             if len(non_null) == 0:
                 return TypeCategory.UNKNOWN
+            # Check for JSON content first
+            json_type = self._detect_json_type_in_series(series)
+            if json_type:
+                return json_type
             nunique = len(set(non_null))
             # If duplicates exist and small set, categorical; else textual
             if nunique < len(non_null) and nunique <= 10:
@@ -311,9 +415,13 @@ class MetaRuleDetector:
             unique_vals = set(non_null.unique())
             if unique_vals.issubset({True, False}):
                 return TypeCategory.BOOLEAN
-            # If all observed are strings, textual unless very small set with duplicates
+            # If all observed are strings, check for JSON first then textual unless very small set with duplicates
             sample = list(non_null.head(min(50, len(non_null))))
             if all(isinstance(x, str) for x in sample):
+                # Check for JSON content first
+                json_type = self._detect_json_type_in_series(series)
+                if json_type:
+                    return json_type
                 nunique = len(set(non_null))
                 if nunique < len(non_null) and nunique <= 10:
                     return TypeCategory.CATEGORICAL
@@ -438,6 +546,12 @@ class MetaRuleDetector:
             categories.extend(["date_validation", "temporal_patterns"])
         elif attributes.type_category == TypeCategory.BOOLEAN:
             categories.extend(["boolean_consistency"])
+        elif attributes.type_category == TypeCategory.ARRAY:
+            categories.extend(["array_analysis", "length_analysis", "depth_analysis", "element_type_analysis"])
+        elif attributes.type_category == TypeCategory.DICTIONARY:
+            categories.extend(["dictionary_analysis", "key_analysis", "depth_analysis", "schema_analysis"])
+        elif attributes.type_category == TypeCategory.COLLECTION:
+            categories.extend(["collection_analysis", "length_analysis", "element_analysis"])
         
         # Diversity-specific categories
         if attributes.diversity_level == DiversityLevel.CONSTANT:

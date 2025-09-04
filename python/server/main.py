@@ -93,7 +93,7 @@ def _map_profiler_to_insights(table: str, applied_filters: Dict[str, list], df: 
             series = df[col_name]
         except Exception:
             series = None
-        if data_type in ("categorical", "boolean", "textual"):
+        if data_type in ("categorical", "boolean", "textual", "array", "dictionary"):
             value_type = "categorical"
         elif data_type == "numeric":
             # Treat any float-valued numeric column as continuous
@@ -118,10 +118,18 @@ def _map_profiler_to_insights(table: str, applied_filters: Dict[str, list], df: 
                 # Heuristic for integer-like numeric columns
                 try:
                     if isinstance(unique_ratio, (int, float)) and unique_ratio is not None:
-                        value_type = "continuous" if unique_ratio > 0.5 else "categorical"
+                        # Special case: 100% unique integer columns should be categorical (like ID columns)
+                        if unique_ratio >= 0.99:  # Allow small floating point tolerance
+                            value_type = "categorical"
+                        else:
+                            value_type = "continuous" if unique_ratio > 0.5 else "categorical"
                     elif isinstance(unique_count, (int, float)) and isinstance(analysis.get("total_count"), (int, float)):
                         ur = float(unique_count) / float(analysis.get("total_count") or 1)
-                        value_type = "continuous" if ur > 0.5 else "categorical"
+                        # Special case: 100% unique integer columns should be categorical (like ID columns)
+                        if ur >= 0.99:  # Allow small floating point tolerance
+                            value_type = "categorical"
+                        else:
+                            value_type = "continuous" if ur > 0.5 else "categorical"
                     else:
                         value_type = "continuous"
                 except Exception:
@@ -137,22 +145,45 @@ def _map_profiler_to_insights(table: str, applied_filters: Dict[str, list], df: 
         if isinstance(ns.get("details"), dict):
             numeric_stats = ns["details"].get("statistics")
         if numeric_stats:
+            # Ensure min/max are converted to numbers (they come as strings from JSON)
+            min_val = numeric_stats.get("min")
+            max_val = numeric_stats.get("max")
+            mean_val = numeric_stats.get("mean")
+            
             col_info["numeric"] = {
-                "min": numeric_stats.get("min"),
-                "max": numeric_stats.get("max"),
-                "avg": numeric_stats.get("mean"),
+                "min": float(min_val) if min_val is not None and str(min_val) != "" else None,
+                "max": float(max_val) if max_val is not None and str(max_val) != "" else None,
+                "avg": float(mean_val) if mean_val is not None and str(mean_val) != "" else None,
+                # Add median as it's often more meaningful than mean for skewed distributions
+                "median": float(numeric_stats.get("median")) if numeric_stats.get("median") is not None else None,
+                # Add standard deviation for understanding data spread
+                "std": float(numeric_stats.get("std")) if numeric_stats.get("std") is not None else None,
             }
 
-        # common values (most_common_value)
-        most_common = None
-        mc = checks_by_id.get("most_common_value") or {}
-        if isinstance(mc.get("details"), dict):
-            most_common = mc.get("details")
-        if most_common:
-            val = most_common.get("most_common_value")
-            cnt = most_common.get("frequency")
-            if val is not None and cnt is not None:
-                col_info["topValues"] = [{"value": str(val), "count": int(cnt)}]
+        # Top values (from top_k_frequencies rule, which excludes nulls)
+        top_k = checks_by_id.get("top_k_frequencies") or {}
+        if isinstance(top_k.get("details"), dict):
+            top_k_data = top_k["details"].get("top_k", [])
+            if top_k_data and isinstance(top_k_data, list):
+                # Convert to the format expected by UI
+                col_info["topValues"] = [
+                    {"value": str(item["value"]), "count": int(item["count"])}
+                    for item in top_k_data[:10]  # Limit to top 10
+                    if "value" in item and "count" in item
+                ]
+        
+        # If no top_k_frequencies available, fall back to most_common_value (but exclude nulls)
+        if "topValues" not in col_info:
+            most_common = None
+            mc = checks_by_id.get("most_common_value") or {}
+            if isinstance(mc.get("details"), dict):
+                most_common = mc.get("details")
+            if most_common:
+                val = most_common.get("most_common_value")
+                cnt = most_common.get("frequency")
+                # Only include if value is not null
+                if val is not None and cnt is not None and not pd.isna(val):
+                    col_info["topValues"] = [{"value": str(val), "count": int(cnt)}]
 
         # basic details: unique_count, duplicate_ratio, most common ratios, etc.
         basic: Dict[str, Any] = {}
@@ -172,13 +203,37 @@ def _map_profiler_to_insights(table: str, applied_filters: Dict[str, list], df: 
 
         na = checks_by_id.get("null_analysis") or {}
         if isinstance(na.get("details"), dict):
-            basic["nullCount"] = na["details"].get("null_count")
+            # Ensure null_count is converted to number (it comes as string from JSON)
+            null_count = na["details"].get("null_count")
+            basic["nullCount"] = int(null_count) if null_count is not None and str(null_count) != "" else None
             basic["nullRatioDetailed"] = na["details"].get("null_ratio")
 
+        # Get most_common for basic details (separate from topValues)
+        most_common = None
+        mc = checks_by_id.get("most_common_value") or {}
+        if isinstance(mc.get("details"), dict):
+            most_common = mc.get("details")
+        
         if isinstance(most_common, dict):
-            basic["mostCommonValue"] = most_common.get("most_common_value")
-            basic["mostCommonFrequency"] = most_common.get("frequency")
-            basic["mostCommonFrequencyRatio"] = most_common.get("frequency_ratio")
+            # If most common value is null and we have a non-null alternative, prefer the non-null one
+            most_common_value = most_common.get("most_common_value")
+            if pd.isna(most_common_value) and most_common.get("most_common_non_null_value") is not None:
+                # Use the most common non-null value for display
+                basic["mostCommonValue"] = most_common.get("most_common_non_null_value")
+                frequency = most_common.get("most_common_non_null_frequency")
+                basic["mostCommonFrequency"] = int(frequency) if frequency is not None and str(frequency) != "" else None
+                basic["mostCommonFrequencyRatio"] = most_common.get("most_common_non_null_frequency_ratio")
+                basic["mostCommonValueNote"] = f"Most common non-null (most common overall is null)"
+            else:
+                # Use the regular most common value
+                basic["mostCommonValue"] = most_common_value
+                frequency = most_common.get("frequency")
+                basic["mostCommonFrequency"] = int(frequency) if frequency is not None and str(frequency) != "" else None
+                basic["mostCommonFrequencyRatio"] = most_common.get("frequency_ratio")
+            
+            # Add flag for constant columns
+            if most_common.get("is_constant_column"):
+                basic["isConstantColumn"] = True
 
         if basic:
             col_info["basic"] = basic

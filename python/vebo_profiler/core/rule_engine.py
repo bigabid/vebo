@@ -144,6 +144,8 @@ class RuleEngine:
         self._add_basic_stats_rules()
         self._add_numeric_rules()
         self._add_textual_rules()
+        self._add_array_rules()
+        self._add_dictionary_rules()
         self._add_temporal_rules()
         self._add_cross_column_rules()
         self._add_privacy_rules()
@@ -182,14 +184,40 @@ def check_unique_count(series: pd.Series) -> Dict[str, Any]:
                 name="Most Common Value",
                 description="Find the most common value and its frequency",
                 category="basic_stats",
-                column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
+                column_types=["numeric", "textual", "temporal", "boolean", "categorical", "array", "dictionary"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_most_common_value(series: pd.Series) -> Dict[str, Any]:
-    value_counts = series.value_counts(dropna=False)
+    # Check if unique count is 1 (constant column) - skip if so
+    unique_count = len(set(series.dropna()))
+    if unique_count <= 1:
+        # For constant columns, most common is obvious and redundant
+        non_null_values = series.dropna()
+        if len(non_null_values) > 0:
+            constant_value = non_null_values.iloc[0]
+            return {
+                "most_common_value": constant_value,
+                "frequency": len(non_null_values),
+                "frequency_ratio": len(non_null_values) / len(series),
+                "is_constant_column": True,
+                "status": "passed",
+                "message": f"Constant column with value: {constant_value}"
+            }
+        else:
+            return {
+                "most_common_value": None,
+                "frequency": 0,
+                "frequency_ratio": 0,
+                "is_constant_column": True,
+                "status": "warning",
+                "message": "All values are null"
+            }
     
-    if len(value_counts) == 0:
+    value_counts_with_null = series.value_counts(dropna=False)
+    value_counts_no_null = series.value_counts(dropna=True)
+    
+    if len(value_counts_with_null) == 0:
         return {
             "most_common_value": None,
             "frequency": 0,
@@ -198,17 +226,32 @@ def check_most_common_value(series: pd.Series) -> Dict[str, Any]:
             "message": "No values found in column"
         }
     
-    most_common = value_counts.index[0]
-    frequency = value_counts.iloc[0]
+    # Get most common value (including null)
+    most_common = value_counts_with_null.index[0]
+    frequency = value_counts_with_null.iloc[0]
     frequency_ratio = frequency / len(series)
     
-    return {
+    result = {
         "most_common_value": most_common,
         "frequency": frequency,
         "frequency_ratio": frequency_ratio,
-        "status": "passed",
-        "message": f"Most common value: {most_common} (appears {frequency} times, {frequency_ratio:.2%})"
+        "status": "passed"
     }
+    
+    # If most common value is null, also provide most common non-null value
+    if pd.isna(most_common) and len(value_counts_no_null) > 0:
+        most_common_non_null = value_counts_no_null.index[0]
+        frequency_non_null = value_counts_no_null.iloc[0]
+        frequency_ratio_non_null = frequency_non_null / len(series.dropna())
+        
+        result["most_common_non_null_value"] = most_common_non_null
+        result["most_common_non_null_frequency"] = frequency_non_null
+        result["most_common_non_null_frequency_ratio"] = frequency_ratio_non_null
+        result["message"] = f"Most common: null ({frequency_ratio:.2%}), most common non-null: {most_common_non_null} ({frequency_ratio_non_null:.2%})"
+    else:
+        result["message"] = f"Most common value: {most_common} (appears {frequency} times, {frequency_ratio:.2%})"
+    
+    return result
 """
             ),
             Rule(
@@ -250,29 +293,43 @@ def check_null_analysis(series: pd.Series) -> Dict[str, Any]:
             Rule(
                 id="top_k_frequencies",
                 name="Top-K Frequencies",
-                description="Top-k most common values, frequencies, and 'other' proportion",
+                description="Top-k most common values, frequencies, and 'other' proportion (excluding nulls)",
                 category="basic_stats",
-                column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
+                column_types=["numeric", "textual", "temporal", "boolean", "categorical", "array", "dictionary"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_top_k_frequencies(series: pd.Series) -> Dict[str, Any]:
     k = 10
-    value_counts = series.value_counts(dropna=False)
-    total_count = len(series)
+    # Exclude nulls from top values - they're not meaningful for "top values"
+    value_counts = series.value_counts(dropna=True)
+    non_null_count = len(series.dropna())
+    
+    if len(value_counts) == 0:
+        return {
+            "top_k": [],
+            "other_count": 0,
+            "other_ratio": 0,
+            "status": "warning",
+            "message": "No non-null values found for top-k frequencies"
+        }
+    
     top_k = value_counts.head(k)
-    other_count = max(total_count - int(top_k.sum()), 0)
-    other_ratio = other_count / total_count if total_count > 0 else 0
+    other_count = max(non_null_count - int(top_k.sum()), 0)
+    other_ratio = other_count / non_null_count if non_null_count > 0 else 0
+    
     top_values = [
-        {"value": v, "count": int(c), "ratio": (int(c) / total_count if total_count > 0 else 0)}
+        {"value": v, "count": int(c), "ratio": (int(c) / non_null_count if non_null_count > 0 else 0)}
         for v, c in zip(top_k.index.tolist(), top_k.values.tolist())
     ]
+    
     return {
         "top_k": top_values,
         "other_count": other_count,
         "other_ratio": other_ratio,
+        "non_null_count": non_null_count,
         "status": "passed",
-        "message": f"Computed top-{k} frequencies"
+        "message": f"Computed top-{k} frequencies (excluding nulls)"
     }
 """
             ),
@@ -387,7 +444,42 @@ def check_stability_entropy(series: pd.Series) -> Dict[str, Any]:
                 code_template="""
 def check_numeric_stats(series: pd.Series) -> Dict[str, Any]:
     numeric_series = pd.to_numeric(series, errors='coerce')
+    non_null_numeric = numeric_series.dropna()
     
+    # Check if this is a constant column (unique count <= 1)
+    unique_count = len(set(non_null_numeric)) if len(non_null_numeric) > 0 else 0
+    
+    if unique_count <= 1:
+        # For constant columns, most stats are redundant
+        if len(non_null_numeric) > 0:
+            constant_value = float(non_null_numeric.iloc[0])
+            stats = {
+                "mean": constant_value,
+                "median": constant_value,
+                "min": constant_value,
+                "max": constant_value,
+                "std": 0.0,
+                "q25": constant_value,
+                "q75": constant_value,
+                "skewness": 0.0,
+                "kurtosis": 0.0,
+                "range": 0.0
+            }
+            return {
+                "statistics": stats,
+                "is_constant_column": True,
+                "status": "passed",
+                "message": f"Constant numeric column with value: {constant_value}"
+            }
+        else:
+            return {
+                "statistics": {},
+                "is_constant_column": True,
+                "status": "warning",
+                "message": "All numeric values are null"
+            }
+    
+    # For non-constant columns, calculate full statistics
     stats = {
         "mean": numeric_series.mean(),
         "median": numeric_series.median(),
@@ -399,6 +491,10 @@ def check_numeric_stats(series: pd.Series) -> Dict[str, Any]:
         "skewness": numeric_series.skew(),
         "kurtosis": numeric_series.kurtosis()
     }
+    
+    # Add range (max - min)
+    if not pd.isna(stats["max"]) and not pd.isna(stats["min"]):
+        stats["range"] = stats["max"] - stats["min"]
     
     return {
         "statistics": stats,
@@ -648,6 +744,348 @@ def check_text_patterns(series: pd.Series) -> Dict[str, Any]:
         for rule in rules:
             self._register_rule(rule, builtin=True)
     
+    def _add_array_rules(self):
+        """Add array-specific rules."""
+        rules = [
+            Rule(
+                id="array_length_analysis",
+                name="Array Length Analysis",
+                description="Analyze array lengths and statistics",
+                category="array_analysis",
+                column_types=["array"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
+                nullability_levels=["empty", "low", "medium", "high", "full"],
+                code_template="""
+def check_array_length_analysis(series: pd.Series) -> Dict[str, Any]:
+    import json
+    lengths = []
+    invalid_count = 0
+    
+    for value in series.dropna():
+        try:
+            parsed = json.loads(value) if isinstance(value, str) else value
+            if isinstance(parsed, list):
+                lengths.append(len(parsed))
+            else:
+                invalid_count += 1
+        except (json.JSONDecodeError, TypeError):
+            invalid_count += 1
+    
+    if not lengths:
+        return {
+            "status": "warning",
+            "message": "No valid arrays found"
+        }
+    
+    length_stats = {
+        "mean_length": sum(lengths) / len(lengths),
+        "min_length": min(lengths),
+        "max_length": max(lengths),
+        "median_length": sorted(lengths)[len(lengths) // 2] if lengths else 0,
+        "total_arrays": len(lengths),
+        "invalid_arrays": invalid_count
+    }
+    
+    return {
+        "array_length_statistics": length_stats,
+        "status": "passed",
+        "message": f"Arrays have lengths ranging from {length_stats['min_length']} to {length_stats['max_length']}"
+    }
+"""
+            ),
+            Rule(
+                id="array_depth_analysis",
+                name="Array Depth Analysis",
+                description="Analyze nesting depth of arrays",
+                category="depth_analysis",
+                column_types=["array"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
+                nullability_levels=["empty", "low", "medium", "high", "full"],
+                code_template="""
+def check_array_depth_analysis(series: pd.Series) -> Dict[str, Any]:
+    import json
+    
+    def get_max_depth(obj):
+        if not isinstance(obj, (list, dict)):
+            return 0
+        if isinstance(obj, list) and not obj:
+            return 1
+        return 1 + max(get_max_depth(item) for item in obj) if obj else 1
+    
+    depths = []
+    invalid_count = 0
+    
+    for value in series.dropna():
+        try:
+            parsed = json.loads(value) if isinstance(value, str) else value
+            if isinstance(parsed, list):
+                depth = get_max_depth(parsed)
+                depths.append(depth)
+            else:
+                invalid_count += 1
+        except (json.JSONDecodeError, TypeError):
+            invalid_count += 1
+    
+    if not depths:
+        return {
+            "status": "warning",
+            "message": "No valid arrays found"
+        }
+    
+    depth_stats = {
+        "mean_depth": sum(depths) / len(depths),
+        "min_depth": min(depths),
+        "max_depth": max(depths),
+        "total_arrays": len(depths),
+        "invalid_arrays": invalid_count
+    }
+    
+    return {
+        "array_depth_statistics": depth_stats,
+        "status": "passed",
+        "message": f"Arrays have depths ranging from {depth_stats['min_depth']} to {depth_stats['max_depth']}"
+    }
+"""
+            ),
+            Rule(
+                id="array_element_type_analysis",
+                name="Array Element Type Analysis",
+                description="Analyze types of elements within arrays",
+                category="element_type_analysis",
+                column_types=["array"],
+                diversity_levels=["low", "medium", "high", "distinctive", "fully_unique"],
+                nullability_levels=["empty", "low", "medium", "high", "full"],
+                code_template="""
+def check_array_element_type_analysis(series: pd.Series) -> Dict[str, Any]:
+    import json
+    from collections import defaultdict
+    
+    element_types = defaultdict(int)
+    total_elements = 0
+    invalid_count = 0
+    
+    for value in series.dropna():
+        try:
+            parsed = json.loads(value) if isinstance(value, str) else value
+            if isinstance(parsed, list):
+                for element in parsed:
+                    total_elements += 1
+                    element_type = type(element).__name__
+                    element_types[element_type] += 1
+            else:
+                invalid_count += 1
+        except (json.JSONDecodeError, TypeError):
+            invalid_count += 1
+    
+    if not element_types:
+        return {
+            "status": "warning",
+            "message": "No valid array elements found"
+        }
+    
+    type_distribution = {
+        elem_type: count / total_elements 
+        for elem_type, count in element_types.items()
+    }
+    
+    return {
+        "element_type_distribution": type_distribution,
+        "total_elements": total_elements,
+        "unique_types": len(element_types),
+        "most_common_type": max(element_types.items(), key=lambda x: x[1])[0],
+        "status": "passed",
+        "message": f"Arrays contain {len(element_types)} different element types across {total_elements} total elements"
+    }
+"""
+            )
+        ]
+        
+        for rule in rules:
+            self._register_rule(rule, builtin=True)
+    
+    def _add_dictionary_rules(self):
+        """Add dictionary-specific rules."""
+        rules = [
+            Rule(
+                id="dictionary_key_analysis",
+                name="Dictionary Key Analysis",
+                description="Analyze dictionary keys and their patterns",
+                category="key_analysis",
+                column_types=["dictionary"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
+                nullability_levels=["empty", "low", "medium", "high", "full"],
+                code_template="""
+def check_dictionary_key_analysis(series: pd.Series) -> Dict[str, Any]:
+    import json
+    from collections import defaultdict
+    
+    all_keys = set()
+    key_counts = defaultdict(int)
+    dict_count = 0
+    invalid_count = 0
+    
+    for value in series.dropna():
+        try:
+            parsed = json.loads(value) if isinstance(value, str) else value
+            if isinstance(parsed, dict):
+                dict_count += 1
+                for key in parsed.keys():
+                    all_keys.add(key)
+                    key_counts[key] += 1
+            else:
+                invalid_count += 1
+        except (json.JSONDecodeError, TypeError):
+            invalid_count += 1
+    
+    if not all_keys:
+        return {
+            "status": "warning",
+            "message": "No valid dictionaries found"
+        }
+    
+    # Calculate key consistency
+    consistent_keys = [key for key, count in key_counts.items() if count == dict_count]
+    
+    key_stats = {
+        "total_unique_keys": len(all_keys),
+        "consistent_keys": len(consistent_keys),
+        "most_common_keys": sorted(key_counts.items(), key=lambda x: x[1], reverse=True)[:10],
+        "total_dictionaries": dict_count,
+        "invalid_dictionaries": invalid_count
+    }
+    
+    return {
+        "dictionary_key_statistics": key_stats,
+        "status": "passed",
+        "message": f"Dictionaries have {len(all_keys)} unique keys, {len(consistent_keys)} appear in all dictionaries"
+    }
+"""
+            ),
+            Rule(
+                id="dictionary_depth_analysis",
+                name="Dictionary Depth Analysis",
+                description="Analyze nesting depth of dictionaries",
+                category="depth_analysis",
+                column_types=["dictionary"],
+                diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
+                nullability_levels=["empty", "low", "medium", "high", "full"],
+                code_template="""
+def check_dictionary_depth_analysis(series: pd.Series) -> Dict[str, Any]:
+    import json
+    
+    def get_max_depth(obj):
+        if not isinstance(obj, (list, dict)):
+            return 0
+        if isinstance(obj, dict) and not obj:
+            return 1
+        if isinstance(obj, dict):
+            return 1 + max(get_max_depth(value) for value in obj.values()) if obj else 1
+        if isinstance(obj, list):
+            return 1 + max(get_max_depth(item) for item in obj) if obj else 1
+        return 0
+    
+    depths = []
+    invalid_count = 0
+    
+    for value in series.dropna():
+        try:
+            parsed = json.loads(value) if isinstance(value, str) else value
+            if isinstance(parsed, dict):
+                depth = get_max_depth(parsed)
+                depths.append(depth)
+            else:
+                invalid_count += 1
+        except (json.JSONDecodeError, TypeError):
+            invalid_count += 1
+    
+    if not depths:
+        return {
+            "status": "warning",
+            "message": "No valid dictionaries found"
+        }
+    
+    depth_stats = {
+        "mean_depth": sum(depths) / len(depths),
+        "min_depth": min(depths),
+        "max_depth": max(depths),
+        "total_dictionaries": len(depths),
+        "invalid_dictionaries": invalid_count
+    }
+    
+    return {
+        "dictionary_depth_statistics": depth_stats,
+        "status": "passed",
+        "message": f"Dictionaries have depths ranging from {depth_stats['min_depth']} to {depth_stats['max_depth']}"
+    }
+"""
+            ),
+            Rule(
+                id="dictionary_schema_analysis",
+                name="Dictionary Schema Analysis",
+                description="Analyze schema consistency across dictionaries",
+                category="schema_analysis",
+                column_types=["dictionary"],
+                diversity_levels=["low", "medium", "high", "distinctive", "fully_unique"],
+                nullability_levels=["empty", "low", "medium", "high", "full"],
+                code_template="""
+def check_dictionary_schema_analysis(series: pd.Series) -> Dict[str, Any]:
+    import json
+    from collections import defaultdict
+    
+    schemas = defaultdict(int)  # Track different key combinations
+    value_types = defaultdict(lambda: defaultdict(int))  # Track value types for each key
+    dict_count = 0
+    invalid_count = 0
+    
+    for value in series.dropna():
+        try:
+            parsed = json.loads(value) if isinstance(value, str) else value
+            if isinstance(parsed, dict):
+                dict_count += 1
+                # Create schema signature (sorted keys)
+                schema = tuple(sorted(parsed.keys()))
+                schemas[schema] += 1
+                
+                # Track value types for each key
+                for key, val in parsed.items():
+                    val_type = type(val).__name__
+                    value_types[key][val_type] += 1
+            else:
+                invalid_count += 1
+        except (json.JSONDecodeError, TypeError):
+            invalid_count += 1
+    
+    if not schemas:
+        return {
+            "status": "warning",
+            "message": "No valid dictionaries found"
+        }
+    
+    # Find most common schema
+    most_common_schema = max(schemas.items(), key=lambda x: x[1])
+    schema_consistency = most_common_schema[1] / dict_count if dict_count > 0 else 0
+    
+    schema_stats = {
+        "unique_schemas": len(schemas),
+        "most_common_schema": most_common_schema[0],
+        "schema_consistency_ratio": schema_consistency,
+        "total_dictionaries": dict_count,
+        "value_type_analysis": dict(value_types),
+        "invalid_dictionaries": invalid_count
+    }
+    
+    return {
+        "dictionary_schema_statistics": schema_stats,
+        "status": "passed",
+        "message": f"Found {len(schemas)} unique schemas, {schema_consistency:.1%} of dictionaries follow the most common schema"
+    }
+"""
+            )
+        ]
+        
+        for rule in rules:
+            self._register_rule(rule, builtin=True)
+    
     def _add_temporal_rules(self):
         """Add temporal-specific rules."""
         rules = [
@@ -838,6 +1276,83 @@ def check_missingness_relationships(df: pd.DataFrame, col1: str, col2: str) -> D
                 requires_cross_column=True,
                 code_template="""
 def check_functional_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
+    import pandas as pd
+    
+    # Skip conditions:
+    # 1. If one column is not categorical (check data types)
+    # 2. If one column is 100% unique (functional dependencies are not meaningful)
+    
+    # Check if columns are categorical by examining their data types and unique ratio
+    def is_categorical_like(series):
+        # Consider a column categorical if:
+        # - It's object/string type with reasonable number of unique values
+        # - It's a category type
+        # - It's numeric but has low cardinality (< 50% unique for non-tiny datasets)
+        if pd.api.types.is_categorical_dtype(series):
+            return True
+        if pd.api.types.is_string_dtype(series) or series.dtype == object:
+            # String/object columns are considered categorical if they're not too diverse
+            unique_ratio = series.nunique() / len(series) if len(series) > 0 else 0
+            return unique_ratio < 0.7  # Allow some flexibility for categorical text
+        if pd.api.types.is_numeric_dtype(series):
+            # Numeric columns are categorical only if they have low cardinality
+            unique_ratio = series.nunique() / len(series) if len(series) > 0 else 0
+            return unique_ratio < 0.3 and series.nunique() <= 50  # More restrictive for numeric
+        return False
+    
+    def is_fully_unique(series):
+        # Check if column is 100% unique (or very close to it)
+        unique_ratio = series.nunique() / len(series) if len(series) > 0 else 0
+        return unique_ratio >= 0.95  # Allow small tolerance for near-unique columns
+    
+    col1_series = df[col1].dropna()
+    col2_series = df[col2].dropna()
+    
+    # Check skip conditions and provide detailed reasoning
+    col1_is_categorical = is_categorical_like(col1_series)
+    col2_is_categorical = is_categorical_like(col2_series)
+    col1_is_unique = is_fully_unique(col1_series)
+    col2_is_unique = is_fully_unique(col2_series)
+    
+    col1_unique_ratio = col1_series.nunique() / len(col1_series) if len(col1_series) > 0 else 0
+    col2_unique_ratio = col2_series.nunique() / len(col2_series) if len(col2_series) > 0 else 0
+    
+    # Build detailed skip reasons
+    skip_reasons = []
+    
+    if not col1_is_categorical or not col2_is_categorical:
+        non_cat_cols = []
+        if not col1_is_categorical:
+            non_cat_cols.append(f"{col1} ({col1_series.dtype})")
+        if not col2_is_categorical:
+            non_cat_cols.append(f"{col2} ({col2_series.dtype})")
+        skip_reasons.append(f"Non-categorical columns: {', '.join(non_cat_cols)}")
+    
+    if col1_is_unique or col2_is_unique:
+        unique_cols = []
+        if col1_is_unique:
+            unique_cols.append(f"{col1} ({col1_unique_ratio:.1%})")
+        if col2_is_unique:
+            unique_cols.append(f"{col2} ({col2_unique_ratio:.1%})")
+        skip_reasons.append(f"Fully unique columns: {', '.join(unique_cols)}")
+    
+    # Skip if any conditions are met
+    if skip_reasons:
+        return {
+            "status": "skipped", 
+            "message": f"Skipped: {'; '.join(skip_reasons)}",
+            "fd_holds_ratio": 0,
+            "reason": "skip_conditions_met",
+            "skip_details": {
+                "non_categorical": not col1_is_categorical or not col2_is_categorical,
+                "fully_unique": col1_is_unique or col2_is_unique,
+                "col1_categorical": col1_is_categorical,
+                "col2_categorical": col2_is_categorical,
+                "col1_unique_ratio": col1_unique_ratio,
+                "col2_unique_ratio": col2_unique_ratio
+            }
+        }
+    
     def check_direction(df, source_col, target_col):
         # Group by source_col and check uniqueness of target_col values for functional dependency
         grouped_data = df[[source_col, target_col]].dropna().groupby(source_col, dropna=False)[target_col]
@@ -971,6 +1486,46 @@ def check_composite_uniqueness(df: pd.DataFrame, col1: str, col2: str) -> Dict[s
                 requires_cross_column=True,
                 code_template="""
 def check_categorical_association_cramers_v(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
+    import pandas as pd
+    import numpy as np
+    
+    # Skip condition: If one column is 100% unique, Cramér's V is not meaningful
+    def is_fully_unique(series):
+        # Check if column is 100% unique (or very close to it)
+        unique_ratio = series.nunique() / len(series) if len(series) > 0 else 0
+        return unique_ratio >= 0.95  # Allow small tolerance for near-unique columns
+    
+    col1_series = df[col1].dropna()
+    col2_series = df[col2].dropna()
+    
+    # Check skip condition and provide detailed reasoning
+    col1_is_unique = is_fully_unique(col1_series)
+    col2_is_unique = is_fully_unique(col2_series)
+    
+    if col1_is_unique or col2_is_unique:
+        col1_unique_ratio = col1_series.nunique() / len(col1_series) if len(col1_series) > 0 else 0
+        col2_unique_ratio = col2_series.nunique() / len(col2_series) if len(col2_series) > 0 else 0
+        
+        unique_cols = []
+        if col1_is_unique:
+            unique_cols.append(f"{col1} ({col1_unique_ratio:.1%})")
+        if col2_is_unique:
+            unique_cols.append(f"{col2} ({col2_unique_ratio:.1%})")
+        
+        return {
+            "status": "skipped", 
+            "message": f"Skipped: Fully unique columns make Cramér's V meaningless - {', '.join(unique_cols)}",
+            "cramers_v": None,
+            "reason": "fully_unique_columns",
+            "skip_details": {
+                "col1_unique_ratio": col1_unique_ratio,
+                "col2_unique_ratio": col2_unique_ratio,
+                "col1_is_unique": col1_is_unique,
+                "col2_is_unique": col2_is_unique
+            }
+        }
+    
+    # Proceed with Cramér's V calculation
     s1 = df[col1].astype(str)
     s2 = df[col2].astype(str)
     ct = pd.crosstab(s1, s2)
