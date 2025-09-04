@@ -1310,7 +1310,7 @@ def execute_cross_column_check(df: pd.DataFrame, col1: str, col2: str) -> Dict[s
         Returns:
             True if series should be treated as categorical
         """
-        if pd.api.types.is_categorical_dtype(series):
+        if isinstance(series.dtype, pd.CategoricalDtype):
             return True
         if pd.api.types.is_string_dtype(series) or series.dtype == object:
             unique_ratio = series.nunique() / len(series) if len(series) > 0 else 0

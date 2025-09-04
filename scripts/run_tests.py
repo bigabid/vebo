@@ -133,7 +133,7 @@ def main():
     args = parser.parse_args()
     
     # Change to project root directory
-    project_root = Path(__file__).parent
+    project_root = Path(__file__).parent.parent
     os.chdir(project_root)
     
     print("🧪 Vebo Profiler Test Runner")

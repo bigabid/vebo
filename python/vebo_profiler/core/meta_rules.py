@@ -168,16 +168,17 @@ class MetaRuleDetector:
         if pd.api.types.is_bool_dtype(series):
             return TypeCategory.BOOLEAN
         elif pd.api.types.is_numeric_dtype(series):
-            # Special handling for numeric columns: check if they are 100% unique integers
-            # These should be treated as categorical (like ID columns) rather than continuous
+            # Special handling for numeric columns: check if they are likely ID columns
+            # Only classify as categorical if it looks like an ID column (large dataset + all unique integers)
             non_null = series.dropna()
             if len(non_null) > 0:
                 unique_count = non_null.nunique()
                 total_count = len(non_null)
                 unique_ratio = unique_count / total_count if total_count > 0 else 0
                 
-                # Check if it's 100% unique and integer-like
-                if unique_ratio >= 0.99:  # Allow small floating point tolerance
+                # Only treat as categorical if it's a very large dataset (>= 500 values) with 100% unique integers
+                # This avoids misclassifying ID columns in typical test datasets while still catching large ID columns
+                if unique_ratio >= 0.99 and total_count >= 500:
                     # Check if values are integer-like (no fractional parts)
                     try:
                         # Convert to numeric and check for fractional parts
@@ -200,7 +201,7 @@ class MetaRuleDetector:
             return TypeCategory.TEXTUAL
         elif pd.api.types.is_datetime64_any_dtype(series):
             return TypeCategory.TEMPORAL
-        elif pd.api.types.is_categorical_dtype(series):
+        elif isinstance(series.dtype, pd.CategoricalDtype):
             return TypeCategory.CATEGORICAL
         else:
             # Handle object dtype that contains strings

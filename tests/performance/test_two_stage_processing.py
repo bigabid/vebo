@@ -20,7 +20,7 @@ import pandas as pd
 import numpy as np
 
 # Add the python directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'python'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python'))
 
 from vebo_profiler import VeboProfiler
 from vebo_profiler.core.profiler import ProfilingConfig

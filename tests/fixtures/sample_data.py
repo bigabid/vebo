@@ -82,7 +82,7 @@ def create_mixed_dataframe() -> pd.DataFrame:
         
         # DateTime columns
         'created_date': pd.date_range('2020-01-01', periods=n_rows, freq='D'),
-        'last_login': pd.date_range('2023-01-01', periods=n_rows, freq='H'),
+        'last_login': pd.date_range('2023-01-01', periods=n_rows, freq='h'),
         
         # Columns with nulls
         'bonus': np.random.choice([1000, 2000, 3000, np.nan], n_rows, p=[0.3, 0.3, 0.3, 0.1]),

@@ -8,7 +8,10 @@ import pytest
 import pandas as pd
 import numpy as np
 import time
-from statistical_enhancements import StatisticalEnhancements
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python'))
+from vebo_profiler.core.statistical_enhancements import StatisticalEnhancements
 
 
 class TestLayer3StatisticalPower:

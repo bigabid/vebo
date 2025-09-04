@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from enum import Enum
 import json
 from pathlib import Path
-import json
-from pathlib import Path
 from functools import lru_cache
 import hashlib
 import warnings
@@ -166,7 +164,7 @@ class RuleEngine:
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_unique_count(series: pd.Series) -> Dict[str, Any]:
     # Use len(set()) for better performance, excluding NaN values like nunique()
     unique_count = len(set(series.dropna()))
@@ -190,7 +188,7 @@ def check_unique_count(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical", "array", "dictionary"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_most_common_value(series: pd.Series) -> Dict[str, Any]:
     # Check if unique count is 1 (constant column) - skip if so
     unique_count = len(set(series.dropna()))
@@ -265,7 +263,7 @@ def check_most_common_value(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_null_analysis(series: pd.Series) -> Dict[str, Any]:
     null_count = series.isnull().sum()
     total_count = len(series)
@@ -301,7 +299,7 @@ def check_null_analysis(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical", "array", "dictionary"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_top_k_frequencies(series: pd.Series) -> Dict[str, Any]:
     k = 10
     # Exclude nulls from top values - they're not meaningful for "top values"
@@ -344,7 +342,7 @@ def check_top_k_frequencies(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_duplicate_value_analysis(series: pd.Series) -> Dict[str, Any]:
     total_count = len(series)
     unique_count = series.nunique(dropna=False)
@@ -367,9 +365,10 @@ def check_duplicate_value_analysis(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_parseability_analysis(series: pd.Series) -> Dict[str, Any]:
     import json as _json
+    import warnings
     s = series.dropna()
     total = len(s)
     if total == 0:
@@ -408,7 +407,7 @@ def check_parseability_analysis(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric", "textual", "temporal", "boolean", "categorical"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_stability_entropy(series: pd.Series) -> Dict[str, Any]:
     non_null = series.dropna()
     total = len(non_null)
@@ -446,7 +445,7 @@ def check_stability_entropy(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_numeric_stats(series: pd.Series) -> Dict[str, Any]:
     numeric_series = pd.to_numeric(series, errors='coerce')
     non_null_numeric = numeric_series.dropna()
@@ -516,7 +515,7 @@ def check_numeric_stats(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric"],
                 diversity_levels=["medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_outlier_detection(series: pd.Series) -> Dict[str, Any]:
     numeric_series = pd.to_numeric(series, errors='coerce').dropna()
     
@@ -560,7 +559,7 @@ def check_outlier_detection(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric"],
                 diversity_levels=["medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_outlier_detection_zscore(series: pd.Series) -> Dict[str, Any]:
     numeric_series = pd.to_numeric(series, errors='coerce').dropna()
     if len(numeric_series) < 4:
@@ -591,7 +590,7 @@ def check_outlier_detection_zscore(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric"],
                 diversity_levels=["low", "medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_numeric_histogram_quantiles(series: pd.Series) -> Dict[str, Any]:
     numeric_series = pd.to_numeric(series, errors='coerce').dropna()
     if len(numeric_series) == 0:
@@ -615,7 +614,7 @@ def check_numeric_histogram_quantiles(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric"],
                 diversity_levels=["medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_modality_estimation(series: pd.Series) -> Dict[str, Any]:
     numeric_series = pd.to_numeric(series, errors='coerce').dropna()
     if len(numeric_series) < 10:
@@ -655,7 +654,7 @@ def check_modality_estimation(series: pd.Series) -> Dict[str, Any]:
                 column_types=["textual"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_length_analysis(series: pd.Series) -> Dict[str, Any]:
     string_series = series.astype(str)
     lengths = string_series.str.len()
@@ -683,15 +682,15 @@ def check_length_analysis(series: pd.Series) -> Dict[str, Any]:
                 column_types=["textual"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_whitespace_encoding_checks(series: pd.Series) -> Dict[str, Any]:
     s = series.astype(str)
     total = len(s)
     if total == 0:
         return {"status": "warning", "message": "Empty series"}
-    leading_ws = s.str.match(r'^\\s+').sum()
-    trailing_ws = s.str.match(r'.*\\s+$').sum()
-    whitespace_only = s.str.match(r'^\\s*$').sum()
+    leading_ws = s.str.match(r'^\s+').sum()
+    trailing_ws = s.str.match(r'.*\s+$').sum()
+    whitespace_only = s.str.match(r'^\s*$').sum()
     def _has_nonprintable(x: str) -> bool:
         try:
             return any(ord(ch) < 32 or ord(ch) == 127 for ch in x)
@@ -716,7 +715,7 @@ def check_whitespace_encoding_checks(series: pd.Series) -> Dict[str, Any]:
                 column_types=["textual"],
                 diversity_levels=["medium", "high", "distinctive", "fully_unique"],  # Skip low diversity
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_text_patterns(series: pd.Series) -> Dict[str, Any]:
     # TextRegexInference is made available in the execution namespace
     # by the check executor
@@ -794,7 +793,7 @@ def check_text_patterns(series: pd.Series) -> Dict[str, Any]:
                 column_types=["array"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_array_length_analysis(series: pd.Series) -> Dict[str, Any]:
     import json
     lengths = []
@@ -840,7 +839,7 @@ def check_array_length_analysis(series: pd.Series) -> Dict[str, Any]:
                 column_types=["array"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_array_depth_analysis(series: pd.Series) -> Dict[str, Any]:
     import json
     
@@ -894,7 +893,7 @@ def check_array_depth_analysis(series: pd.Series) -> Dict[str, Any]:
                 column_types=["array"],
                 diversity_levels=["low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_array_element_type_analysis(series: pd.Series) -> Dict[str, Any]:
     import json
     from collections import defaultdict
@@ -953,7 +952,7 @@ def check_array_element_type_analysis(series: pd.Series) -> Dict[str, Any]:
                 column_types=["dictionary"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_dictionary_key_analysis(series: pd.Series) -> Dict[str, Any]:
     import json
     from collections import defaultdict
@@ -1008,7 +1007,7 @@ def check_dictionary_key_analysis(series: pd.Series) -> Dict[str, Any]:
                 column_types=["dictionary"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_dictionary_depth_analysis(series: pd.Series) -> Dict[str, Any]:
     import json
     
@@ -1066,7 +1065,7 @@ def check_dictionary_depth_analysis(series: pd.Series) -> Dict[str, Any]:
                 column_types=["dictionary"],
                 diversity_levels=["low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_dictionary_schema_analysis(series: pd.Series) -> Dict[str, Any]:
     import json
     from collections import defaultdict
@@ -1136,7 +1135,7 @@ def check_dictionary_schema_analysis(series: pd.Series) -> Dict[str, Any]:
                 column_types=["temporal"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_date_validation(series: pd.Series) -> Dict[str, Any]:
     import warnings
     try:
@@ -1196,7 +1195,7 @@ def check_date_validation(series: pd.Series) -> Dict[str, Any]:
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
-                code_template="""
+                code_template=r"""
 def check_identicality(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
     series1 = df[col1]
     series2 = df[col2]
@@ -1231,7 +1230,7 @@ def check_identicality(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]
                 diversity_levels=["low", "medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
-                code_template="""
+                code_template=r"""
 def check_correlation(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
     try:
         # Convert to numeric, coercing errors to NaN
@@ -1283,7 +1282,7 @@ def check_correlation(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
-                code_template="""
+                code_template=r"""
 def check_missingness_relationships(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
     s1 = df[col1]
     s2 = df[col2]
@@ -1316,7 +1315,7 @@ def check_missingness_relationships(df: pd.DataFrame, col1: str, col2: str) -> D
                 diversity_levels=["binary", "low", "medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
-                code_template="""
+                code_template=r"""
 def check_functional_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
     import pandas as pd
     import numpy as np
@@ -1466,7 +1465,7 @@ def check_functional_dependency_basic(df: pd.DataFrame, col1: str, col2: str) ->
                 diversity_levels=["binary", "low", "medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
-                code_template="""
+                code_template=r"""
 def check_composite_uniqueness(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
     # Check if either column is 100% unique by itself
     total = len(df)
@@ -1541,7 +1540,7 @@ def check_composite_uniqueness(df: pd.DataFrame, col1: str, col2: str) -> Dict[s
                 diversity_levels=["binary", "low", "medium", "high", "distinctive"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 requires_cross_column=True,
-                code_template="""
+                code_template=r"""
 def check_categorical_association_cramers_v(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
     import pandas as pd
     import numpy as np
@@ -1663,18 +1662,18 @@ def check_categorical_association_cramers_v_basic(df: pd.DataFrame, col1: str, c
                 column_types=["textual"],
                 diversity_levels=["medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high"],
-                code_template="""
+                code_template=r"""
 def check_pii_pattern_detection(series: pd.Series) -> Dict[str, Any]:
     s = series.astype(str).dropna()
     if len(s) == 0:
         return {"status": "warning", "message": "No data", "pattern_counts": {}}
     
     pii_patterns = {
-        'email_pattern': r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$',
-        'phone_pattern': r'^\\+?[\\d\\s\\-\\(\\)]{10,}$',
-        'ssn_pattern': r'^\\d{3}-?\\d{2}-?\\d{4}$',
-        'credit_card_pattern': r'^\\d{4}[\\s\\-]?\\d{4}[\\s\\-]?\\d{4}[\\s\\-]?\\d{4}$',
-        'ip_address_pattern': r'^(?:\\d{1,3}\\.){3}\\d{1,3}$'
+        'email_pattern': r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+        'phone_pattern': r'^\+?[\d\s\-\(\)]{10,}$',
+        'ssn_pattern': r'^\d{3}-?\d{2}-?\d{4}$',
+        'credit_card_pattern': r'^\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}$',
+        'ip_address_pattern': r'^(?:\d{1,3}\.){3}\d{1,3}$'
     }
     
     pattern_counts = {}
@@ -1708,7 +1707,7 @@ def check_pii_pattern_detection(series: pd.Series) -> Dict[str, Any]:
                 column_types=["textual"],
                 diversity_levels=["high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium"],
-                code_template="""
+                code_template=r"""
 def check_data_format_patterns(series: pd.Series) -> Dict[str, Any]:
     s = series.astype(str).dropna()
     if len(s) == 0:
@@ -1716,7 +1715,7 @@ def check_data_format_patterns(series: pd.Series) -> Dict[str, Any]:
     
     # Simple format pattern detection
     format_patterns = {
-        'masked_asterisk': r'\\*{3,}',
+        'masked_asterisk': r'\*{3,}',
         'masked_x': r'[xX]{3,}',
         'hex_string': r'^[0-9a-fA-F]{8,}$',
         'base64_like': r'^[A-Za-z0-9+/]{20,}=*$',
@@ -1773,7 +1772,7 @@ def check_data_format_patterns(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric", "textual", "categorical"],
                 diversity_levels=["constant", "binary", "low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_memory_usage_analysis(series: pd.Series) -> Dict[str, Any]:
     current_dtype = str(series.dtype)
     memory_usage = series.memory_usage(deep=True)
@@ -1826,7 +1825,7 @@ def check_memory_usage_analysis(series: pd.Series) -> Dict[str, Any]:
                 column_types=["numeric", "textual", "categorical"],
                 diversity_levels=["low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
-                code_template="""
+                code_template=r"""
 def check_cardinality_analysis(series: pd.Series) -> Dict[str, Any]:
     total_count = len(series)
     # Use len(set()) for better performance, excluding NaN values like nunique()

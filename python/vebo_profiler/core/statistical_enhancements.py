@@ -39,7 +39,7 @@ class StatisticalEnhancements:
         if n_rows < 100:
             min_sample = 20
             min_group_size = 2
-        elif n_rows < 1000:
+        elif n_rows <= 1000:  # Changed from < 1000 to <= 1000
             min_sample = 30
             min_group_size = 3
         elif n_rows < 10000:
