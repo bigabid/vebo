@@ -1319,38 +1319,51 @@ def check_missingness_relationships(df: pd.DataFrame, col1: str, col2: str) -> D
                 code_template="""
 def check_functional_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
     import pandas as pd
+    import numpy as np
+    import sys
+    import os
     
-    # Skip conditions:
-    # 1. If one column is not categorical (check data types)
-    # 2. If one column is 100% unique (functional dependencies are not meaningful)
+    # Import statistical enhancements
+    try:
+        from statistical_enhancements import StatisticalEnhancements
+    except ImportError:
+        # Fallback if statistical_enhancements not available - use basic implementation
+        return check_functional_dependency_basic(df, col1, col2)
     
-    # Check if columns are categorical by examining their data types and unique ratio
+    enhancer = StatisticalEnhancements()
+    
+    # LAYER 3: Check statistical power first (data-size adaptive)
+    power_check = enhancer.should_proceed_with_analysis(df, col1, col2, "fd")
+    if not power_check['should_proceed']:
+        return {
+            "status": "skipped",
+            "message": f"Skipped: {power_check['reason']}",
+            "fd_holds_ratio": 0,
+            "reason": power_check['reason'],
+            "skip_details": power_check['power_details'],
+            "enhanced_analysis": True
+        }
+    
+    # Original categorical checks (keep existing logic for compatibility)
     def is_categorical_like(series):
-        # Consider a column categorical if:
-        # - It's object/string type with reasonable number of unique values
-        # - It's a category type
-        # - It's numeric but has low cardinality (< 50% unique for non-tiny datasets)
         if pd.api.types.is_categorical_dtype(series):
             return True
         if pd.api.types.is_string_dtype(series) or series.dtype == object:
-            # String/object columns are considered categorical if they're not too diverse
             unique_ratio = series.nunique() / len(series) if len(series) > 0 else 0
-            return unique_ratio < 0.7  # Allow some flexibility for categorical text
+            return unique_ratio < 0.7
         if pd.api.types.is_numeric_dtype(series):
-            # Numeric columns are categorical only if they have low cardinality
             unique_ratio = series.nunique() / len(series) if len(series) > 0 else 0
-            return unique_ratio < 0.3 and series.nunique() <= 50  # More restrictive for numeric
+            return unique_ratio < 0.3 and series.nunique() <= 50
         return False
     
     def is_fully_unique(series):
-        # Check if column is 100% unique (or very close to it)
         unique_ratio = series.nunique() / len(series) if len(series) > 0 else 0
-        return unique_ratio >= 0.95  # Allow small tolerance for near-unique columns
+        return unique_ratio >= 0.95
     
     col1_series = df[col1].dropna()
     col2_series = df[col2].dropna()
     
-    # Check skip conditions and provide detailed reasoning
+    # Check original skip conditions for backward compatibility
     col1_is_categorical = is_categorical_like(col1_series)
     col2_is_categorical = is_categorical_like(col2_series)
     col1_is_unique = is_fully_unique(col1_series)
@@ -1359,7 +1372,6 @@ def check_functional_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[
     col1_unique_ratio = col1_series.nunique() / len(col1_series) if len(col1_series) > 0 else 0
     col2_unique_ratio = col2_series.nunique() / len(col2_series) if len(col2_series) > 0 else 0
     
-    # Build detailed skip reasons
     skip_reasons = []
     
     if not col1_is_categorical or not col2_is_categorical:
@@ -1378,7 +1390,6 @@ def check_functional_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[
             unique_cols.append(f"{col2} ({col2_unique_ratio:.1%})")
         skip_reasons.append(f"Fully unique columns: {', '.join(unique_cols)}")
     
-    # Skip if any conditions are met
     if skip_reasons:
         return {
             "status": "skipped", 
@@ -1395,8 +1406,14 @@ def check_functional_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[
             }
         }
     
+    # LAYER 4: Enhanced analysis with confidence measures
+    return enhancer.enhanced_functional_dependency_with_confidence(df, col1, col2)
+
+def check_functional_dependency_basic(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
+    # Fallback basic implementation if enhanced version unavailable
+    import pandas as pd
+    
     def check_direction(df, source_col, target_col):
-        # Group by source_col and check uniqueness of target_col values for functional dependency
         grouped_data = df[[source_col, target_col]].dropna().groupby(source_col, dropna=False)[target_col]
         g = grouped_data.apply(lambda x: len(set(x)))
         if len(g) == 0:
@@ -1409,11 +1426,9 @@ def check_functional_dependency(df: pd.DataFrame, col1: str, col2: str) -> Dict[
             "total_groups": int(len(g))
         }
     
-    # Check both directions
     fd_col1_to_col2 = check_direction(df, col1, col2)
     fd_col2_to_col1 = check_direction(df, col2, col1)
     
-    # Determine which direction has stronger dependency
     if fd_col1_to_col2["fd_holds_ratio"] >= fd_col2_to_col1["fd_holds_ratio"]:
         best_direction = f"{col1} -> {col2}"
         best_ratio = fd_col1_to_col2["fd_holds_ratio"]
@@ -1530,17 +1545,38 @@ def check_composite_uniqueness(df: pd.DataFrame, col1: str, col2: str) -> Dict[s
 def check_categorical_association_cramers_v(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
     import pandas as pd
     import numpy as np
+    import sys
+    import os
     
-    # Skip condition: If one column is 100% unique, Cramér's V is not meaningful
+    # Import statistical enhancements
+    try:
+        from statistical_enhancements import StatisticalEnhancements
+    except ImportError:
+        # Fallback if statistical_enhancements not available - use basic implementation
+        return check_categorical_association_cramers_v_basic(df, col1, col2)
+    
+    enhancer = StatisticalEnhancements()
+    
+    # LAYER 3: Check statistical power first (data-size adaptive)
+    power_check = enhancer.should_proceed_with_analysis(df, col1, col2, "cramers_v")
+    if not power_check['should_proceed']:
+        return {
+            "status": "skipped",
+            "message": f"Skipped: {power_check['reason']}",
+            "cramers_v": None,
+            "reason": power_check['reason'],
+            "skip_details": power_check['power_details'],
+            "enhanced_analysis": True
+        }
+    
+    # Original uniqueness checks for backward compatibility
     def is_fully_unique(series):
-        # Check if column is 100% unique (or very close to it)
         unique_ratio = series.nunique() / len(series) if len(series) > 0 else 0
-        return unique_ratio >= 0.95  # Allow small tolerance for near-unique columns
+        return unique_ratio >= 0.95
     
     col1_series = df[col1].dropna()
     col2_series = df[col2].dropna()
     
-    # Check skip condition and provide detailed reasoning
     col1_is_unique = is_fully_unique(col1_series)
     col2_is_unique = is_fully_unique(col2_series)
     
@@ -1567,7 +1603,14 @@ def check_categorical_association_cramers_v(df: pd.DataFrame, col1: str, col2: s
             }
         }
     
-    # Proceed with Cramér's V calculation
+    # LAYER 4: Performance-optimized Cramér's V with significance testing
+    return enhancer.performance_optimized_cramers_v(df, col1, col2)
+
+def check_categorical_association_cramers_v_basic(df: pd.DataFrame, col1: str, col2: str) -> Dict[str, Any]:
+    # Fallback basic implementation if enhanced version unavailable
+    import pandas as pd
+    import numpy as np
+    
     s1 = df[col1].astype(str)
     s2 = df[col2].astype(str)
     ct = pd.crosstab(s1, s2)
@@ -1582,7 +1625,6 @@ def check_categorical_association_cramers_v(df: pd.DataFrame, col1: str, col2: s
     k = min(ct.shape)
     v = np.sqrt(chi2 / (n * (k - 1))) if k > 1 and n > 0 else np.nan
     
-    # Determine strength and interest level
     if not np.isnan(v):
         if v >= 0.5:
             strength = "strong"
