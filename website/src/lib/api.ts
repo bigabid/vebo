@@ -399,17 +399,15 @@ export const cancelJob = async (jobId: string): Promise<{ status: string; messag
   return response.json();
 };
 
-export const startInsightsJob = async (
+export const generateQuery = async (
   params: {
-    dataSource: string;
     catalog: string;
     database: string;
     table: string;
     partitions: Record<string, string[]>;
   }
-): Promise<{ jobId: string; status: string }> => {
-  // 1) Ask Node server to start Athena query and return executionId
-  const res = await fetch('/api/execute', {
+): Promise<{ query: string; explanation: string; partitionsApplied: string[] }> => {
+  const res = await fetch('/api/generate-query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -420,9 +418,49 @@ export const startInsightsJob = async (
     }),
   });
   if (!res.ok) {
-    throw new Error('Failed to start Athena query');
+    throw new Error('Failed to generate query');
   }
-  const { executionId } = await res.json();
+  return res.json();
+};
+
+export const executeQuery = async (
+  params: {
+    catalog: string;
+    database: string;
+    query: string;
+  }
+): Promise<{ executionId: string }> => {
+  const res = await fetch('/api/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      catalog: params.catalog,
+      database: params.database,
+      query: params.query,
+    }),
+  });
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Failed to execute query');
+  }
+  return res.json();
+};
+
+export const startInsightsJobWithQuery = async (
+  params: {
+    catalog: string;
+    database: string;
+    table: string;
+    query: string;
+    partitions?: Record<string, string[]>;
+  }
+): Promise<{ jobId: string; status: string }> => {
+  // 1) Execute the custom query on Athena
+  const { executionId } = await executeQuery({
+    catalog: params.catalog,
+    database: params.database,
+    query: params.query,
+  });
 
   // 2) Tell Python service to start insights processing for that executionId
   const pyRes = await fetch(`${INSIGHTS_API}/insights/start`, {
@@ -433,11 +471,38 @@ export const startInsightsJob = async (
       table: params.table,
       catalog: params.catalog,
       database: params.database,
-      appliedFilters: params.partitions,
+      appliedFilters: params.partitions || {},
     }),
   });
   if (!pyRes.ok) {
     throw new Error('Failed to start insights job');
   }
   return pyRes.json();
+};
+
+// Keep the old function for backward compatibility (deprecated)
+export const startInsightsJob = async (
+  params: {
+    dataSource: string;
+    catalog: string;
+    database: string;
+    table: string;
+    partitions: Record<string, string[]>;
+  }
+): Promise<{ jobId: string; status: string }> => {
+  // Generate default query and execute it
+  const queryResult = await generateQuery({
+    catalog: params.catalog,
+    database: params.database,
+    table: params.table,
+    partitions: params.partitions,
+  });
+  
+  return startInsightsJobWithQuery({
+    catalog: params.catalog,
+    database: params.database,
+    table: params.table,
+    query: queryResult.query,
+    partitions: params.partitions,
+  });
 };

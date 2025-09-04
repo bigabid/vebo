@@ -6,6 +6,7 @@ import { TableSelector } from '@/components/TableSelector';
 import { PartitionSelector } from '@/components/PartitionSelector';
 import { ExecuteButton } from '@/components/ExecuteButton';
 import { InsightsPanel } from '@/components/InsightsPanel';
+import { QueryEditor } from '@/components/QueryEditor';
 import type { InsightsData } from '@/lib/api';
 import { DataSourceSelector } from '@/components/DataSourceSelector';
 import { CatalogSelector } from '@/components/CatalogSelector';
@@ -20,6 +21,7 @@ function AthenaExplorer() {
   const [selectedTable, setSelectedTable] = useState<string | null>('parquet_bids');
   const [selectedPartitions, setSelectedPartitions] = useState<Record<string, string[]>>({});
   const [currentInsights, setCurrentInsights] = useState<InsightsData | null>(null);
+  const [currentQuery, setCurrentQuery] = useState<string>('');
 
   const handleDataSourceSelect = (ds: string) => {
     setSelectedDataSource(ds);
@@ -53,6 +55,10 @@ function AthenaExplorer() {
 
   const handleInsightsReady = (insights: InsightsData) => {
     setCurrentInsights(insights);
+  };
+
+  const handleQueryChange = (query: string) => {
+    setCurrentQuery(query);
   };
 
   return (
@@ -113,12 +119,22 @@ function AthenaExplorer() {
               />
             )}
             
+            <QueryEditor
+              dataSource={selectedDataSource}
+              catalog={selectedCatalog}
+              database={selectedDatabase}
+              table={selectedTable}
+              partitions={selectedPartitions}
+              onQueryChange={handleQueryChange}
+            />
+            
             <ExecuteButton
               dataSource={selectedDataSource}
               catalog={selectedCatalog}
               database={selectedDatabase}
               selectedTable={selectedTable}
               selectedPartitions={selectedPartitions}
+              currentQuery={currentQuery}
               onInsightsReady={handleInsightsReady}
             />
           </div>

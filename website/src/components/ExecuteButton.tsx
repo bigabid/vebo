@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { LogDisplay } from '@/components/LogDisplay';
-import { useStartInsights, useJobStatus, useCancelJob } from '@/hooks/useAthenaApi';
+import { useStartInsights, useStartInsightsWithQuery, useJobStatus, useCancelJob } from '@/hooks/useAthenaApi';
 import { useToast } from '@/hooks/use-toast';
 
 export interface ExecuteButtonComponentProps {
@@ -13,6 +13,7 @@ export interface ExecuteButtonComponentProps {
   database: string | null;
   selectedTable: string | null;
   selectedPartitions: Record<string, string[]>;
+  currentQuery?: string;
   onInsightsReady: (insights: any) => void;
 }
 
@@ -21,27 +22,43 @@ export function ExecuteButton({
   catalog,
   database,
   selectedTable, 
-  selectedPartitions, 
+  selectedPartitions,
+  currentQuery,
   onInsightsReady 
 }: ExecuteButtonComponentProps) {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const { toast } = useToast();
   
   const startInsightsMutation = useStartInsights();
+  const startInsightsWithQueryMutation = useStartInsightsWithQuery();
   const cancelJobMutation = useCancelJob();
   const jobStatusQuery = useJobStatus(currentJobId, !!currentJobId);
 
   const handleExecute = async () => {
-    if (!dataSource || !catalog || !database || !selectedTable) return;
+    if (!catalog || !database || !selectedTable) return;
     
     try {
-      const result = await startInsightsMutation.mutateAsync({
-        dataSource,
-        catalog,
-        database,
-        table: selectedTable,
-        partitions: selectedPartitions,
-      });
+      let result;
+      if (currentQuery && currentQuery.trim()) {
+        // Use the current query from the QueryEditor
+        result = await startInsightsWithQueryMutation.mutateAsync({
+          catalog,
+          database,
+          table: selectedTable,
+          query: currentQuery.trim(),
+          partitions: selectedPartitions,
+        });
+      } else {
+        // Fallback to legacy auto-generated query path
+        if (!dataSource) return;
+        result = await startInsightsMutation.mutateAsync({
+          dataSource,
+          catalog,
+          database,
+          table: selectedTable,
+          partitions: selectedPartitions,
+        });
+      }
       
       setCurrentJobId(result.jobId);
       
@@ -52,7 +69,7 @@ export function ExecuteButton({
     } catch (error) {
       toast({
         title: "Failed to start analysis",
-        description: "Please try again",
+        description: error instanceof Error ? error.message : "Please try again",
         variant: "destructive",
       });
     }
@@ -63,6 +80,8 @@ export function ExecuteButton({
   const isError = jobStatusQuery.data?.status === 'error';
   const isCancelled = jobStatusQuery.data?.status === 'cancelled';
   const progress = jobStatusQuery.data?.progress || 0;
+  
+  const isMutating = startInsightsMutation.isPending || startInsightsWithQueryMutation.isPending;
 
   // Handle completion
   if (isComplete && jobStatusQuery.data?.insights) {
@@ -110,7 +129,7 @@ export function ExecuteButton({
     }
   };
 
-  const canExecute = !!dataSource && !!catalog && !!database && !!selectedTable && !isRunning && !startInsightsMutation.isPending;
+  const canExecute = !!catalog && !!database && !!selectedTable && (currentQuery || !!dataSource) && !isRunning && !isMutating;
   const canCancel = isRunning && currentJobId && !cancelJobMutation.isPending;
   const selectedCount = Object.values(selectedPartitions).flat().length;
 
@@ -159,10 +178,10 @@ export function ExecuteButton({
             size="lg"
             className="flex-1 h-12 bg-gradient-primary hover:opacity-90 border-0 shadow-medium hover:shadow-glow transition-all"
           >
-            {(isRunning || startInsightsMutation.isPending) ? (
+            {(isRunning || isMutating) ? (
               <>
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                {startInsightsMutation.isPending ? 'Starting...' : 'Running Analysis...'}
+                {isMutating ? 'Starting...' : 'Running Analysis...'}
               </>
             ) : (
               <>

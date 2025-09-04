@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchDataSources, fetchCatalogs, fetchDatabases, fetchTables, fetchPartitions, startInsightsJob, getJobStatus, cancelJob } from '@/lib/api';
+import { fetchDataSources, fetchCatalogs, fetchDatabases, fetchTables, fetchPartitions, startInsightsJob, startInsightsJobWithQuery, generateQuery, getJobStatus, cancelJob } from '@/lib/api';
 import { useEffect } from 'react';
 
 export const useDataSources = () => {
@@ -95,5 +95,25 @@ export const useCancelJob = () => {
       // Invalidate job status to trigger immediate update
       queryClient.invalidateQueries({ queryKey: ['job-status', jobId] });
     },
+  });
+};
+
+export const useStartInsightsWithQuery = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (params: { catalog: string; database: string; table: string; query: string; partitions?: Record<string, string[]> }) =>
+      startInsightsJobWithQuery(params),
+    onSuccess: () => {
+      // Invalidate job status queries to trigger polling
+      queryClient.invalidateQueries({ queryKey: ['job-status'] });
+    },
+  });
+};
+
+export const useGenerateQuery = () => {
+  return useMutation({
+    mutationFn: (params: { catalog: string; database: string; table: string; partitions: Record<string, string[]> }) =>
+      generateQuery(params),
   });
 };

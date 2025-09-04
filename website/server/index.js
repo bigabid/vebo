@@ -102,17 +102,12 @@ app.get('/api/partitions', async (req, res) => {
   }
 });
 
-// Start an Athena query execution based on user selections
-app.post('/api/execute', async (req, res) => {
+// Generate SQL query without executing it
+app.post('/api/generate-query', async (req, res) => {
   try {
     const { catalog, database, table, partitions } = req.body || {};
     if (!catalog || !database || !table) {
       return res.status(400).json({ error: 'Missing catalog, database or table' });
-    }
-
-    const outputLocation = process.env.ATHENA_OUTPUT_S3;
-    if (!outputLocation) {
-      return res.status(500).json({ error: 'ATHENA_OUTPUT_S3 env var is required (e.g., s3://my-bucket/athena-results/)' });
     }
 
     // Discover partition key types to properly type literals in WHERE clause
@@ -151,21 +146,66 @@ app.post('/api/execute', async (req, res) => {
 
     // Build WHERE clause from partitions: { key: [v1,v2] } with proper typing
     const whereClauses = [];
+    const partitionsApplied = [];
     if (partitions && typeof partitions === 'object') {
       for (const [key, values] of Object.entries(partitions)) {
         if (Array.isArray(values) && values.length > 0) {
           const keyType = partitionKeyTypeByName[key] || 'string';
           const typedVals = values.map(v => formatLiteral(v, keyType)).join(', ');
           whereClauses.push(`"${key}" IN (${typedVals})`);
+          partitionsApplied.push(`${key}=${values.join(',')}`);
         }
       }
     }
 
-    const whereSql = whereClauses.length ? ` WHERE ${whereClauses.join(' AND ')}` : '';
-    const queryString = `SELECT * FROM "${database}"."${table}"${whereSql} LIMIT 10000`;
+    const whereSql = whereClauses.length ? `\nWHERE ${whereClauses.join('\n  AND ')}` : '';
+    const queryString = `SELECT *\nFROM "${database}"."${table}"${whereSql}\nLIMIT 10000`;
+
+    const explanation = whereClauses.length > 0 
+      ? `Query will select all columns from ${table} with partition filters applied, limited to 10,000 rows.`
+      : `Query will select all columns from ${table}, limited to 10,000 rows.`;
+
+    res.json({ 
+      query: queryString,
+      explanation,
+      partitionsApplied
+    });
+  } catch (e) {
+    res.status(500).json({ error: e?.message || 'Failed to generate query' });
+  }
+});
+
+// Start an Athena query execution with a custom SQL query
+app.post('/api/execute', async (req, res) => {
+  try {
+    const { catalog, database, query } = req.body || {};
+    if (!catalog || !database || !query) {
+      return res.status(400).json({ error: 'Missing catalog, database or query' });
+    }
+
+    const outputLocation = process.env.ATHENA_OUTPUT_S3;
+    if (!outputLocation) {
+      return res.status(500).json({ error: 'ATHENA_OUTPUT_S3 env var is required (e.g., s3://my-bucket/athena-results/)' });
+    }
+
+    // Basic SQL injection prevention - ensure query is SELECT only
+    const trimmedQuery = query.trim();
+    const upperQuery = trimmedQuery.toUpperCase();
+    
+    if (!upperQuery.startsWith('SELECT')) {
+      return res.status(400).json({ error: 'Only SELECT queries are allowed' });
+    }
+    
+    // Prevent potentially dangerous operations
+    const dangerousPatterns = ['DROP', 'DELETE', 'INSERT', 'UPDATE', 'CREATE', 'ALTER', 'TRUNCATE'];
+    for (const pattern of dangerousPatterns) {
+      if (upperQuery.includes(pattern)) {
+        return res.status(400).json({ error: `${pattern} operations are not allowed` });
+      }
+    }
 
     const params = {
-      QueryString: queryString,
+      QueryString: trimmedQuery,
       QueryExecutionContext: {
         Catalog: String(catalog),
         Database: String(database),

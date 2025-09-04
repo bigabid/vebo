@@ -610,7 +610,7 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
       )}
 
       {/* Summary Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <StatCard
           icon={Database}
           title="Total Rows"
@@ -624,13 +624,6 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
           value={insights.columns.length}
           subtitle="Data attributes"
           color="secondary"
-        />
-        <StatCard
-          icon={TrendingUp}
-          title="Partitions"
-          value={insights.partitionSummary.selectedCount}
-          subtitle={`of ${insights.partitionSummary.totalDistinct} total`}
-          color="success"
         />
       </div>
 
