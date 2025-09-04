@@ -14,6 +14,9 @@ from functools import lru_cache
 import hashlib
 import warnings
 
+# Suppress pandas datetime parsing warnings that occur during coercion
+warnings.filterwarnings('ignore', message='Could not infer format, so each element will be parsed individually, falling back to `dateutil`')
+
 from .meta_rules import ColumnAttributes, MetaRuleDetector, TypeCategory, DiversityLevel
 
 
@@ -374,7 +377,9 @@ def check_parseability_analysis(series: pd.Series) -> Dict[str, Any]:
     as_numeric = pd.to_numeric(s, errors='coerce')
     int_mask = as_numeric.notna() & (as_numeric % 1 == 0)
     float_mask = as_numeric.notna()
-    as_dt = pd.to_datetime(s, errors='coerce', utc=True)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', message='Could not infer format, so each element will be parsed individually, falling back to `dateutil`')
+        as_dt = pd.to_datetime(s, errors='coerce', utc=True)
     dt_mask = as_dt.notna()
     def _is_json_str(x):
         if not isinstance(x, str):
@@ -709,33 +714,56 @@ def check_whitespace_encoding_checks(series: pd.Series) -> Dict[str, Any]:
                 description="Analyze common text patterns",
                 category="text_patterns",
                 column_types=["textual"],
-                diversity_levels=["low", "medium", "high", "distinctive"],
+                diversity_levels=["low", "medium", "high", "distinctive", "fully_unique"],
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_text_patterns(series: pd.Series) -> Dict[str, Any]:
+    # TextRegexInference is made available in the execution namespace
+    # by the check executor
+    regex_engine = TextRegexInference()
+    
     string_series = series.astype(str)
     
-    # Check for common patterns
-    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'
-    phone_pattern = r'^\\+?[\\d\\s\\-\\(\\)]{10,}$'
-    url_pattern = r'^https?://[^\\s/$\\.?#]\\.[^\\s]*$'
+    # Use the new regex inference system
+    inferred_patterns = regex_engine.infer_patterns(string_series, max_patterns=3)
     
-    email_matches = string_series.str.match(email_pattern, na=False).sum()
-    phone_matches = string_series.str.match(phone_pattern, na=False).sum()
-    url_matches = string_series.str.match(url_pattern, na=False).sum()
+    # Also check for the original basic patterns for backward compatibility
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    phone_pattern = r'^\+?[\d\s\-\(\)]{10,}$'
+    url_pattern = r'^https?://[^\s/$\.?#]\.[^\s]*$'
     
     total_non_null = len(string_series.dropna())
     
-    patterns = {
+    try:
+        email_matches = string_series.str.match(email_pattern, na=False).sum()
+        phone_matches = string_series.str.match(phone_pattern, na=False).sum()
+        url_matches = string_series.str.match(url_pattern, na=False).sum()
+    except Exception:
+        email_matches = phone_matches = url_matches = 0
+    
+    basic_patterns = {
         "email_like": {"count": email_matches, "ratio": email_matches / total_non_null if total_non_null > 0 else 0},
         "phone_like": {"count": phone_matches, "ratio": phone_matches / total_non_null if total_non_null > 0 else 0},
         "url_like": {"count": url_matches, "ratio": url_matches / total_non_null if total_non_null > 0 else 0}
     }
     
+    # Convert inferred patterns to the expected format
+    inferred_pattern_data = []
+    for pattern in inferred_patterns:
+        inferred_pattern_data.append({
+            "regex": pattern.pattern,
+            "description": pattern.description,
+            "match_count": pattern.match_count,
+            "match_ratio": pattern.match_ratio,
+            "confidence": pattern.confidence,
+            "examples": pattern.examples
+        })
+    
     return {
-        "patterns": patterns,
+        "basic_patterns": basic_patterns,
+        "inferred_patterns": inferred_pattern_data,
         "status": "passed",
-        "message": "Text pattern analysis completed"
+        "message": f"Text pattern analysis completed. Found {len(inferred_patterns)} inferred patterns."
     }
 """
             )
@@ -1099,9 +1127,12 @@ def check_dictionary_schema_analysis(series: pd.Series) -> Dict[str, Any]:
                 nullability_levels=["empty", "low", "medium", "high", "full"],
                 code_template="""
 def check_date_validation(series: pd.Series) -> Dict[str, Any]:
+    import warnings
     try:
         # Try to convert to datetime
-        datetime_series = pd.to_datetime(series, errors='coerce')
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', message='Could not infer format, so each element will be parsed individually, falling back to `dateutil`')
+            datetime_series = pd.to_datetime(series, errors='coerce')
         valid_count = datetime_series.notna().sum()
         total_count = len(series)
         valid_ratio = valid_count / total_count if total_count > 0 else 0

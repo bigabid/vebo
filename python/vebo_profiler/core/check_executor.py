@@ -413,10 +413,13 @@ def execute_cross_column_check(df: pd.DataFrame, col1: str, col2: str) -> Dict[s
             Result dictionary
         """
         # Create execution namespace
+        from .text_regex_inference import TextRegexInference
+        
         namespace = {
             'pd': pd,
             'np': np,
-            'series': series
+            'series': series,
+            'TextRegexInference': TextRegexInference
         }
         
         # Execute the code

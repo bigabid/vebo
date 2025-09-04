@@ -44,8 +44,8 @@ class ProfilingLogger:
         Args:
             stage: Current stage name
         """
-        if self.current_stage != "initialization":
-            # Log completion of previous stage
+        # Always log completion of previous stage (including initialization)
+        if hasattr(self, 'current_stage') and self.current_stage:
             duration = time.time() - self.stage_start_time
             self.info(
                 stage=self.current_stage, 

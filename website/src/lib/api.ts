@@ -67,6 +67,39 @@ export interface CrossColumnResult {
   details?: Record<string, any>;
 }
 
+export interface TextPattern {
+  regex: string;
+  description: string;
+  match_count: number;
+  match_ratio: number;
+  confidence: number;
+  examples: string[];
+}
+
+export interface TextPatternCheck {
+  basic_patterns?: {
+    email_like?: { count: number; ratio: number };
+    phone_like?: { count: number; ratio: number };
+    url_like?: { count: number; ratio: number };
+  };
+  inferred_patterns?: TextPattern[];
+  status?: string;
+  message?: string;
+}
+
+export interface ColumnCheck {
+  check_id: string;
+  rule_id: string;
+  name: string;
+  description?: string;
+  status: string;
+  score: number;
+  message: string;
+  details?: any;
+  execution_time_ms: number;
+  timestamp: string;
+}
+
 export interface ColumnInsight {
   name: string;
   type: string;
@@ -85,7 +118,11 @@ export interface ColumnInsight {
     mostCommonValue?: string | number | null;
     mostCommonFrequency?: number;
     mostCommonFrequencyRatio?: number;
+    mostCommonValueNote?: string;
+    isConstantColumn?: boolean;
   };
+  checks?: ColumnCheck[];
+  textPatterns?: TextPatternCheck;
 }
 
 // Mock delay utility
@@ -169,7 +206,7 @@ const MOCK_INSIGHTS: InsightsData = {
   columns: [
     {
       name: 'user_id',
-      type: 'string',
+      type: 'textual',
       nullRatio: 0.01,
       topValues: [
         { value: 'u_123', count: 4321 },
@@ -177,7 +214,34 @@ const MOCK_INSIGHTS: InsightsData = {
         { value: 'u_789', count: 3654 },
         { value: 'u_012', count: 3201 },
         { value: 'u_345', count: 2876 }
-      ]
+      ],
+      textPatterns: {
+        basic_patterns: {
+          email_like: { count: 0, ratio: 0 },
+          phone_like: { count: 0, ratio: 0 },
+          url_like: { count: 0, ratio: 0 }
+        },
+        inferred_patterns: [
+          {
+            regex: '^u_\\d{3}$',
+            description: 'User ID format (u_ prefix + 3 digits)',
+            match_count: 1234560,
+            match_ratio: 0.999,
+            confidence: 95.2,
+            examples: ['u_123', 'u_456', 'u_789']
+          },
+          {
+            regex: '^[a-z]_\\d+$',
+            description: 'Letter prefix with underscore and digits',
+            match_count: 1234560,
+            match_ratio: 0.999,
+            confidence: 92.8,
+            examples: ['u_123', 'u_456']
+          }
+        ],
+        status: 'passed',
+        message: 'Text pattern analysis completed. Found 2 inferred patterns.'
+      }
     },
     {
       name: 'revenue',
@@ -193,7 +257,7 @@ const MOCK_INSIGHTS: InsightsData = {
     },
     {
       name: 'category',
-      type: 'string',
+      type: 'textual',
       nullRatio: 0.05,
       topValues: [
         { value: 'electronics', count: 125000 },
@@ -201,7 +265,34 @@ const MOCK_INSIGHTS: InsightsData = {
         { value: 'books', count: 87000 },
         { value: 'home', count: 76000 },
         { value: 'sports', count: 65000 }
-      ]
+      ],
+      textPatterns: {
+        basic_patterns: {
+          email_like: { count: 0, ratio: 0 },
+          phone_like: { count: 0, ratio: 0 },
+          url_like: { count: 0, ratio: 0 }
+        },
+        inferred_patterns: [
+          {
+            regex: '^[a-z]+$',
+            description: 'All lowercase letters',
+            match_count: 451000,
+            match_ratio: 0.98,
+            confidence: 94.9,
+            examples: ['electronics', 'clothing', 'books']
+          },
+          {
+            regex: '^[a-zA-Z]+$',
+            description: 'Single word',
+            match_count: 451000,
+            match_ratio: 0.98,
+            confidence: 94.9,
+            examples: ['electronics', 'clothing']
+          }
+        ],
+        status: 'passed',
+        message: 'Text pattern analysis completed. Found 2 inferred patterns.'
+      }
     },
     {
       name: 'session_duration',

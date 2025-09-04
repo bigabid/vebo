@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BarChart, TrendingUp, Database, Calendar, Hash, Type, AlertCircle, Filter } from 'lucide-react';
+import { BarChart, TrendingUp, Database, Calendar, Hash, Type, AlertCircle, Filter, Code, Copy } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -7,7 +7,7 @@ import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import type { InsightsData, ColumnInsight } from '@/lib/api';
+import type { InsightsData, ColumnInsight, TextPattern } from '@/lib/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // Status filter component for cross-column results
@@ -367,6 +367,14 @@ function ColumnInsightCard({ column }: { column: ColumnInsight }) {
             </div>
           </div>
         )}
+
+        {/* Text Patterns - only show for textual columns */}
+        {(column.type === 'textual' || column.type.includes('string') || column.type.includes('varchar')) && column.textPatterns && (
+          <>
+            <Separator />
+            <TextPatternsSection textPatterns={column.textPatterns} />
+          </>
+        )}
       </div>
     </Card>
   );
@@ -562,11 +570,129 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
                     </div>
                   ))}
                 </div>
-              );
-            })()}
+                    );
+    })()}
           </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// Text Patterns component for displaying regex patterns
+function TextPatternsSection({ textPatterns }: { textPatterns: any }) {
+  if (!textPatterns) return null;
+
+  const { inferred_patterns = [], basic_patterns = {} } = textPatterns;
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+    }
+  };
+
+  const hasBasicPatterns = Object.values(basic_patterns).some((pattern: any) => pattern?.ratio > 0);
+  const hasInferredPatterns = inferred_patterns.length > 0;
+
+  if (!hasBasicPatterns && !hasInferredPatterns) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-3">
+      <h5 className="text-sm font-medium text-foreground flex items-center gap-1">
+        <Code className="w-3 h-3" />
+        Text Patterns
+      </h5>
+      
+      {/* Basic Patterns */}
+      {hasBasicPatterns && (
+        <div className="space-y-2">
+          <h6 className="text-xs font-medium text-muted-foreground">Common Formats</h6>
+          <div className="space-y-1">
+            {basic_patterns.email_like?.ratio > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-foreground">Email-like</span>
+                <span className="text-muted-foreground">
+                  {Math.round(basic_patterns.email_like.ratio * 100)}% ({basic_patterns.email_like.count})
+                </span>
+              </div>
+            )}
+            {basic_patterns.phone_like?.ratio > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-foreground">Phone-like</span>
+                <span className="text-muted-foreground">
+                  {Math.round(basic_patterns.phone_like.ratio * 100)}% ({basic_patterns.phone_like.count})
+                </span>
+              </div>
+            )}
+            {basic_patterns.url_like?.ratio > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-foreground">URL-like</span>
+                <span className="text-muted-foreground">
+                  {Math.round(basic_patterns.url_like.ratio * 100)}% ({basic_patterns.url_like.count})
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Inferred Regex Patterns */}
+      {hasInferredPatterns && (
+        <div className="space-y-2">
+          <h6 className="text-xs font-medium text-muted-foreground">Inferred Regex Patterns</h6>
+          <div className="space-y-2">
+            {inferred_patterns.slice(0, 3).map((pattern: TextPattern, index: number) => (
+              <div key={index} className="bg-muted/50 rounded-md p-3 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-foreground">{pattern.description}</span>
+                  <Badge 
+                    variant="secondary" 
+                    className="text-xs"
+                    title={`${pattern.match_count} matches out of total`}
+                  >
+                    {pattern.confidence.toFixed(1)}% confident
+                  </Badge>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-background border rounded px-2 py-1 text-xs font-mono break-all">
+                    {pattern.regex}
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0"
+                    onClick={() => copyToClipboard(pattern.regex)}
+                    title="Copy regex"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+                
+                <div className="text-muted-foreground">
+                  <span>Matches: {pattern.match_count} values ({Math.round(pattern.match_ratio * 100)}%)</span>
+                  {pattern.examples.length > 0 && (
+                    <div className="mt-1">
+                      <span>Examples: </span>
+                      <span className="font-mono">
+                        {pattern.examples.slice(0, 2).map((ex, i) => (
+                          <span key={i}>
+                            "{ex}"{i < Math.min(1, pattern.examples.length - 1) ? ', ' : ''}
+                          </span>
+                        ))}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
